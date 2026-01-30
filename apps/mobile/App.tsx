@@ -1,14 +1,40 @@
 import { StatusBar } from 'expo-status-bar';
+import MapLibreGL from '@maplibre/maplibre-react-native';
 import { StyleSheet, Text, View } from 'react-native';
 
-const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? 'Not set';
+MapLibreGL.setAccessToken('');
+
+const initialCenter: [number, number] = [-122.4194, 37.7749];
+
+const eventPins = [
+  {
+    id: 'public-event',
+    coordinate: [-122.4194, 37.7749] as [number, number],
+    label: 'P',
+    color: '#2f80ed',
+  },
+  {
+    id: 'private-event',
+    coordinate: [-122.414, 37.778] as [number, number],
+    label: 'R',
+    color: '#9b51e0',
+  },
+];
 
 export default function App() {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>EventPins</Text>
-      <Text style={styles.subtitle}>API URL: {apiUrl}</Text>
-      <StatusBar style="auto" />
+      <MapLibreGL.MapView style={styles.map} styleURL="https://demotiles.maplibre.org/style.json">
+        <MapLibreGL.Camera centerCoordinate={initialCenter} zoomLevel={12} />
+        {eventPins.map((pin) => (
+          <MapLibreGL.PointAnnotation key={pin.id} id={pin.id} coordinate={pin.coordinate}>
+            <View style={[styles.marker, { backgroundColor: pin.color }]}>
+              <Text style={styles.markerText}>{pin.label}</Text>
+            </View>
+          </MapLibreGL.PointAnnotation>
+        ))}
+      </MapLibreGL.MapView>
+      <StatusBar style="light" />
     </View>
   );
 }
@@ -16,18 +42,21 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+  },
+  map: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  marker: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#444',
+  markerText: {
+    color: '#fff',
+    fontWeight: '700',
   },
 });
