@@ -22,35 +22,6 @@ const mapStyleUrl =
 const initialCenter: [number, number] = [-122.4194, 37.7749];
 const tokenKey = 'authToken';
 
-const eventPins = [
-  {
-    id: 'public-event',
-    coordinate: [-122.4194, 37.7749] as [number, number],
-    isPrivate: false,
-  },
-  {
-    id: 'private-event',
-    coordinate: [-122.414, 37.778] as [number, number],
-    isPrivate: true,
-  },
-];
-
-const eventFeatures = {
-  type: 'FeatureCollection',
-  features: eventPins.map((event) => ({
-    type: 'Feature',
-    id: event.id,
-    properties: {
-      id: event.id,
-      isPrivate: event.isPrivate,
-    },
-    geometry: {
-      type: 'Point',
-      coordinates: event.coordinate,
-    },
-  })),
-} as const;
-
 const markerColorExpression = [
   'case',
   ['get', 'isPrivate'],
@@ -59,6 +30,7 @@ const markerColorExpression = [
 ] as const;
 
 type AuthMode = 'login' | 'signup';
+type EventPrivacy = 'public' | 'private';
 
 type Profile = {
   id: string;
@@ -66,6 +38,28 @@ type Profile = {
   bio: string;
   interests: string[];
   avatarUrl: string;
+};
+
+type EventPin = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  type: EventPrivacy;
+  startTime: string;
+  endTime: string;
+  createdAt: string;
+  location?: { type: 'Point'; coordinates: [number, number] };
+  redactedLocation?: { type: 'Point'; coordinates: [number, number] };
+};
+
+type EventDraft = {
+  title: string;
+  description: string;
+  category: string;
+  type: EventPrivacy;
+  startTime: string;
+  endTime: string;
 };
 
 const emptyProfile: Profile = {
@@ -90,10 +84,43 @@ export default function App() {
   const [interestInput, setInterestInput] = useState('');
   const [showProfileScreen, setShowProfileScreen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [events, setEvents] = useState<EventPin[]>([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+  const [showCreateEvent, setShowCreateEvent] = useState(false);
+  const [eventDraft, setEventDraft] = useState<EventDraft>({
+    title: '',
+    description: '',
+    category: '',
+    type: 'public',
+    startTime: new Date().toISOString(),
+    endTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  });
 
   const needsProfileSetup = useMemo(() => {
     return Boolean(authToken && profile && !profile.displayName.trim());
   }, [authToken, profile]);
+
+  const eventFeatures = useMemo(() => {
+    return {
+      type: 'FeatureCollection',
+      features: events.map((event) => {
+        const coordinates =
+          event.location?.coordinates ?? event.redactedLocation?.coordinates ?? initialCenter;
+        return {
+          type: 'Feature',
+          id: event.id,
+          properties: {
+            id: event.id,
+            isPrivate: event.type === 'private',
+          },
+          geometry: {
+            type: 'Point',
+            coordinates,
+          },
+        };
+      }),
+    } as const;
+  }, [events]);
 
   useEffect(() => {
     const loadToken = async () => {
@@ -129,6 +156,16 @@ export default function App() {
       // Keep default center if location fails.
     });
   }, [authToken]);
+
+  useEffect(() => {
+    if (!authToken) {
+      return;
+    }
+
+    loadEvents(authToken, centerCoordinate).catch(() => {
+      // Errors are handled in loadEvents.
+    });
+  }, [authToken, centerCoordinate]);
 
   const loadProfile = async (token: string) => {
     if (!apiUrl) {
@@ -234,6 +271,80 @@ export default function App() {
     }
   };
 
+  const loadEvents = async (token: string, coordinate: [number, number]) => {
+    if (!apiUrl) {
+      setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
+      return;
+    }
+
+    setIsLoadingEvents(true);
+    try {
+      const response = await fetch(
+        `${apiUrl}/events/near?lat=${coordinate[1]}&lng=${coordinate[0]}&radiusKm=5`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        setErrorMessage('Unable to load nearby events.');
+        return;
+      }
+
+      const data = (await response.json()) as { events?: EventPin[] };
+      setEvents(data.events ?? []);
+    } catch (error) {
+      setErrorMessage('Unable to reach the server.');
+    } finally {
+      setIsLoadingEvents(false);
+    }
+  };
+
+  const handleCreateEvent = async () => {
+    setErrorMessage('');
+    if (!authToken) {
+      return;
+    }
+    if (!apiUrl) {
+      setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${apiUrl}/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          title: eventDraft.title,
+          description: eventDraft.description,
+          category: eventDraft.category,
+          type: eventDraft.type,
+          startTime: eventDraft.startTime,
+          endTime: eventDraft.endTime,
+          location: {
+            type: 'Point',
+            coordinates: centerCoordinate,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        setErrorMessage('Unable to create event.');
+        return;
+      }
+
+      setShowCreateEvent(false);
+      await loadEvents(authToken, centerCoordinate);
+    } catch (error) {
+      setErrorMessage('Unable to reach the server.');
+    }
+  };
+
   const handleLogout = async () => {
     await SecureStore.deleteItemAsync(tokenKey);
     setAuthToken(null);
@@ -242,6 +353,7 @@ export default function App() {
     setShowProfileEditor(false);
     setShowProfileScreen(false);
     setSelectedEventId(null);
+    setShowCreateEvent(false);
   };
 
   const handleAddInterest = () => {
@@ -419,9 +531,100 @@ export default function App() {
     );
   }
 
+  if (showCreateEvent) {
+    return (
+      <ScrollView contentContainerStyle={styles.profileContainer}>
+        <Text style={styles.title}>Create event</Text>
+        <Text style={styles.subtitle}>Share what is happening around you.</Text>
+        <TextInput
+          placeholder="Title"
+          placeholderTextColor="#9ca3af"
+          style={styles.input}
+          value={eventDraft.title}
+          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, title: value }))}
+        />
+        <TextInput
+          placeholder="Description"
+          placeholderTextColor="#9ca3af"
+          style={[styles.input, styles.textArea]}
+          value={eventDraft.description}
+          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, description: value }))}
+          multiline
+        />
+        <TextInput
+          placeholder="Category"
+          placeholderTextColor="#9ca3af"
+          style={styles.input}
+          value={eventDraft.category}
+          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, category: value }))}
+        />
+        <View style={styles.privacyRow}>
+          <Pressable
+            style={[
+              styles.privacyToggle,
+              eventDraft.type === 'public' && styles.privacyToggleActive,
+            ]}
+            onPress={() => setEventDraft((prev) => ({ ...prev, type: 'public' }))}
+          >
+            <Text
+              style={[
+                styles.privacyToggleText,
+                eventDraft.type === 'public' && styles.privacyToggleTextActive,
+              ]}
+            >
+              Public
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.privacyToggle,
+              eventDraft.type === 'private' && styles.privacyToggleActive,
+            ]}
+            onPress={() => setEventDraft((prev) => ({ ...prev, type: 'private' }))}
+          >
+            <Text
+              style={[
+                styles.privacyToggleText,
+                eventDraft.type === 'private' && styles.privacyToggleTextActive,
+              ]}
+            >
+              Private
+            </Text>
+          </Pressable>
+        </View>
+        <TextInput
+          placeholder="Start time (ISO)"
+          placeholderTextColor="#9ca3af"
+          style={styles.input}
+          value={eventDraft.startTime}
+          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, startTime: value }))}
+        />
+        <TextInput
+          placeholder="End time (ISO)"
+          placeholderTextColor="#9ca3af"
+          style={styles.input}
+          value={eventDraft.endTime}
+          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, endTime: value }))}
+        />
+        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+        <Pressable style={styles.primaryButton} onPress={handleCreateEvent}>
+          <Text style={styles.primaryButtonText}>Create event</Text>
+        </Pressable>
+        <Pressable style={styles.linkButton} onPress={() => setShowCreateEvent(false)}>
+          <Text style={styles.linkText}>Back to map</Text>
+        </Pressable>
+        <StatusBar style="dark" />
+      </ScrollView>
+    );
+  }
+
+  const selectedEvent = selectedEventId
+    ? events.find((event) => event.id === selectedEventId)
+    : null;
+
   return (
     <View style={styles.container}>
-      <MapLibreGL.MapView style={styles.map} mapStyle="https://api.maptiler.com/maps/streets-v4/style.json?key=UkfGJIzJRTu4ZQq0bmN7">
+      <MapLibreGL.MapView style={styles.map} mapStyle={mapStyleUrl}>
         <MapLibreGL.Camera centerCoordinate={centerCoordinate} zoomLevel={12} />
         <MapLibreGL.ShapeSource id="events" shape={eventFeatures} onPress={handleEventPress}>
           <MapLibreGL.CircleLayer
@@ -441,13 +644,28 @@ export default function App() {
       <Pressable style={styles.profileButton} onPress={() => setShowProfileScreen(true)}>
         <Text style={styles.profileButtonText}>Profile</Text>
       </Pressable>
+      <Pressable style={styles.createEventButton} onPress={() => setShowCreateEvent(true)}>
+        <Text style={styles.createEventButtonText}>Create</Text>
+      </Pressable>
       {selectedEventId ? (
         <View style={styles.bottomSheet}>
-          <Text style={styles.bottomSheetTitle}>Event Details</Text>
-          <Text style={styles.bottomSheetText}>Selected event: {selectedEventId}</Text>
+          <Text style={styles.bottomSheetTitle}>
+            {selectedEvent?.title ?? 'Event Details'}
+          </Text>
+          <Text style={styles.bottomSheetText}>
+            {selectedEvent?.description ?? 'Tap a pin to view details.'}
+          </Text>
+          <Text style={styles.bottomSheetMeta}>
+            {selectedEvent ? `${selectedEvent.category} • ${selectedEvent.type}` : ''}
+          </Text>
           <Pressable style={styles.secondaryButton} onPress={() => setSelectedEventId(null)}>
             <Text style={styles.secondaryButtonText}>Close</Text>
           </Pressable>
+        </View>
+      ) : null}
+      {isLoadingEvents ? (
+        <View style={styles.loadingEventsBadge}>
+          <Text style={styles.loadingEventsText}>Loading events...</Text>
         </View>
       ) : null}
       <StatusBar style="light" />
@@ -625,6 +843,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
+  createEventButton: {
+    position: 'absolute',
+    top: 52,
+    left: 16,
+    backgroundColor: 'rgba(37, 99, 235, 0.9)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  createEventButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
   bottomSheet: {
     position: 'absolute',
     left: 16,
@@ -648,5 +879,48 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#475569',
     marginBottom: 12,
+  },
+  bottomSheetMeta: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginBottom: 12,
+  },
+  loadingEventsBadge: {
+    position: 'absolute',
+    top: 110,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  loadingEventsText: {
+    color: '#fff',
+    fontSize: 12,
+  },
+  privacyRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  privacyToggle: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#cbd5f5',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  privacyToggleActive: {
+    backgroundColor: '#e0e7ff',
+    borderColor: '#6366f1',
+  },
+  privacyToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  privacyToggleTextActive: {
+    color: '#3730a3',
   },
 });
