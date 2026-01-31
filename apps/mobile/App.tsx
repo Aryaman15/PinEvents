@@ -6,16 +6,19 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
-  FlatList,
 } from 'react-native';
 
 MapLibreGL.setAccessToken('');
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? '';
+const mapStyleUrl =
+  process.env.EXPO_PUBLIC_MAP_STYLE_URL ??
+  'https://demotiles.maplibre.org/styles/osm-bright-gl-style/style.json';
 const initialCenter: [number, number] = [-122.4194, 37.7749];
 const tokenKey = 'authToken';
 
@@ -23,16 +26,37 @@ const eventPins = [
   {
     id: 'public-event',
     coordinate: [-122.4194, 37.7749] as [number, number],
-    label: 'P',
-    color: '#2f80ed',
+    isPrivate: false,
   },
   {
     id: 'private-event',
     coordinate: [-122.414, 37.778] as [number, number],
-    label: 'R',
-    color: '#9b51e0',
+    isPrivate: true,
   },
 ];
+
+const eventFeatures = {
+  type: 'FeatureCollection',
+  features: eventPins.map((event) => ({
+    type: 'Feature',
+    id: event.id,
+    properties: {
+      id: event.id,
+      isPrivate: event.isPrivate,
+    },
+    geometry: {
+      type: 'Point',
+      coordinates: event.coordinate,
+    },
+  })),
+} as const;
+
+const markerColorExpression = [
+  'case',
+  ['get', 'isPrivate'],
+  '#9b51e0',
+  '#2f80ed',
+] as const;
 
 type AuthMode = 'login' | 'signup';
 
@@ -64,6 +88,8 @@ export default function App() {
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [profileDraft, setProfileDraft] = useState<Profile>(emptyProfile);
   const [interestInput, setInterestInput] = useState('');
+  const [showProfileScreen, setShowProfileScreen] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   const needsProfileSetup = useMemo(() => {
     return Boolean(authToken && profile && !profile.displayName.trim());
@@ -208,6 +234,16 @@ export default function App() {
     }
   };
 
+  const handleLogout = async () => {
+    await SecureStore.deleteItemAsync(tokenKey);
+    setAuthToken(null);
+    setProfile(null);
+    setProfileDraft(emptyProfile);
+    setShowProfileEditor(false);
+    setShowProfileScreen(false);
+    setSelectedEventId(null);
+  };
+
   const handleAddInterest = () => {
     const trimmed = interestInput.trim();
     if (!trimmed || profileDraft.interests.includes(trimmed)) {
@@ -227,6 +263,17 @@ export default function App() {
       ...prev,
       interests: prev.interests.filter((item) => item !== interest),
     }));
+  };
+
+  const handleEventPress = (event: MapLibreGL.OnPressEvent) => {
+    const feature = event.features?.[0];
+    const eventId = feature?.properties?.id as string | undefined;
+    if (!eventId) {
+      return;
+    }
+
+    console.log(`Pressed event ${eventId}`);
+    setSelectedEventId(eventId);
   };
 
   if (isLoading) {
@@ -282,7 +329,7 @@ export default function App() {
 
   if (needsProfileSetup || showProfileEditor) {
     return (
-      <View style={styles.profileContainer}>
+      <ScrollView contentContainerStyle={styles.profileContainer}>
         <Text style={styles.title}>{needsProfileSetup ? 'Finish your profile' : 'Edit profile'}</Text>
         <Text style={styles.subtitle}>Add a display name and interests to continue.</Text>
         <TextInput
@@ -319,46 +366,90 @@ export default function App() {
             <Text style={styles.secondaryButtonText}>Add</Text>
           </Pressable>
         </View>
-        <FlatList
-          data={profileDraft.interests}
-          keyExtractor={(item) => item}
-          horizontal
-          contentContainerStyle={styles.interestList}
-          renderItem={({ item }) => (
-            <Pressable style={styles.tag} onPress={() => handleRemoveInterest(item)}>
+        <View style={styles.tagWrap}>
+          {profileDraft.interests.map((item) => (
+            <Pressable key={item} style={styles.tag} onPress={() => handleRemoveInterest(item)}>
               <Text style={styles.tagText}>{item} ✕</Text>
             </Pressable>
-          )}
-        />
+          ))}
+        </View>
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
         <Pressable style={styles.primaryButton} onPress={handleSaveProfile}>
           <Text style={styles.primaryButtonText}>Save profile</Text>
         </Pressable>
         {!needsProfileSetup ? (
           <Pressable style={styles.linkButton} onPress={() => setShowProfileEditor(false)}>
-            <Text style={styles.linkText}>Back to map</Text>
+            <Text style={styles.linkText}>Back to profile</Text>
           </Pressable>
         ) : null}
         <StatusBar style="dark" />
-      </View>
+      </ScrollView>
+    );
+  }
+
+  if (profile && showProfileScreen && !showProfileEditor) {
+    return (
+      <ScrollView contentContainerStyle={styles.profileContainer}>
+        <Text style={styles.title}>Your profile</Text>
+        <Text style={styles.profileValue}>{profile.displayName || 'No display name set'}</Text>
+        {profile.bio ? <Text style={styles.profileBio}>{profile.bio}</Text> : null}
+        <Text style={styles.sectionTitle}>Interests</Text>
+        <View style={styles.tagWrap}>
+          {profile.interests.length ? (
+            profile.interests.map((interest) => (
+              <View key={interest} style={styles.tag}>
+                <Text style={styles.tagText}>{interest}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.mutedText}>No interests added yet.</Text>
+          )}
+        </View>
+        <Pressable style={styles.primaryButton} onPress={() => setShowProfileEditor(true)}>
+          <Text style={styles.primaryButtonText}>Edit profile</Text>
+        </Pressable>
+        <Pressable style={styles.logoutButton} onPress={handleLogout}>
+          <Text style={styles.logoutButtonText}>Log out</Text>
+        </Pressable>
+        <Pressable style={styles.linkButton} onPress={() => setShowProfileScreen(false)}>
+          <Text style={styles.linkText}>Back to map</Text>
+        </Pressable>
+        <StatusBar style="dark" />
+      </ScrollView>
     );
   }
 
   return (
     <View style={styles.container}>
-      <MapLibreGL.MapView style={styles.map} styleURL="https://demotiles.maplibre.org/style.json">
+      <MapLibreGL.MapView style={styles.map} mapStyle={mapStyleUrl}>
         <MapLibreGL.Camera centerCoordinate={centerCoordinate} zoomLevel={12} />
-        {eventPins.map((pin) => (
-          <MapLibreGL.PointAnnotation key={pin.id} id={pin.id} coordinate={pin.coordinate}>
-            <View style={[styles.marker, { backgroundColor: pin.color }]}>
-              <Text style={styles.markerText}>{pin.label}</Text>
-            </View>
-          </MapLibreGL.PointAnnotation>
-        ))}
+        <MapLibreGL.ShapeSource id="events" shape={eventFeatures} onPress={handleEventPress}>
+          <MapLibreGL.CircleLayer
+            id="event-icons"
+            style={{
+              circleColor: markerColorExpression,
+              circleRadius: 8,
+              circleStrokeColor: '#ffffff',
+              circleStrokeWidth: 2,
+            }}
+          />
+        </MapLibreGL.ShapeSource>
       </MapLibreGL.MapView>
-      <Pressable style={styles.profileButton} onPress={() => setShowProfileEditor(true)}>
+      <View style={styles.attributionContainer}>
+        <Text style={styles.attributionText}>© OpenStreetMap contributors</Text>
+      </View>
+      <Pressable style={styles.profileButton} onPress={() => setShowProfileScreen(true)}>
         <Text style={styles.profileButtonText}>Profile</Text>
       </Pressable>
+      {selectedEventId ? (
+        <View style={styles.bottomSheet}>
+          <Text style={styles.bottomSheetTitle}>Event Details</Text>
+          <Text style={styles.bottomSheetText}>Selected event: {selectedEventId}</Text>
+          <Pressable style={styles.secondaryButton} onPress={() => setSelectedEventId(null)}>
+            <Text style={styles.secondaryButtonText}>Close</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <StatusBar style="light" />
     </View>
   );
@@ -380,7 +471,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   profileContainer: {
-    flex: 1,
+    flexGrow: 1,
     padding: 24,
     justifyContent: 'center',
     backgroundColor: '#f8fafc',
@@ -425,7 +516,7 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     backgroundColor: '#e2e8f0',
-    paddingVertical: 14,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 12,
     alignItems: 'center',
@@ -434,6 +525,17 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: '#1e293b',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  logoutButton: {
+    backgroundColor: '#ef4444',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  logoutButtonText: {
+    color: '#fff',
     fontWeight: '600',
   },
   linkButton: {
@@ -458,35 +560,57 @@ const styles = StyleSheet.create({
     flex: 1,
     marginBottom: 0,
   },
-  interestList: {
-    paddingVertical: 12,
+  tagWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
   },
   tag: {
     backgroundColor: '#e0e7ff',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    marginRight: 8,
   },
   tagText: {
     color: '#3730a3',
     fontWeight: '600',
   },
+  profileValue: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 8,
+  },
+  profileBio: {
+    fontSize: 16,
+    color: '#475569',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#0f172a',
+  },
+  mutedText: {
+    color: '#64748b',
+  },
   map: {
     ...StyleSheet.absoluteFillObject,
   },
-  marker: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
+  attributionContainer: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  markerText: {
-    color: '#fff',
-    fontWeight: '700',
+  attributionText: {
+    fontSize: 12,
+    color: '#1e293b',
   },
   profileButton: {
     position: 'absolute',
@@ -500,5 +624,29 @@ const styles = StyleSheet.create({
   profileButtonText: {
     color: '#fff',
     fontWeight: '600',
+  },
+  bottomSheet: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 24,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  bottomSheetTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+    color: '#0f172a',
+  },
+  bottomSheetText: {
+    fontSize: 14,
+    color: '#475569',
+    marginBottom: 12,
   },
 });
