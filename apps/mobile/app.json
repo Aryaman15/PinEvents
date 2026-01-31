@@ -21,11 +21,15 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.aryaman97.eventpins"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-dev-client", "@maplibre/maplibre-react-native"]
+    "plugins": [
+      "expo-dev-client",
+      "@maplibre/maplibre-react-native"
+    ]
   }
 }
