@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import MapLibreGL from '@maplibre/maplibre-react-native';
 import * as SecureStore from 'expo-secure-store';
+import * as Location from 'expo-location';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -55,6 +56,7 @@ export default function App() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [centerCoordinate, setCenterCoordinate] = useState<[number, number]>(initialCenter);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -81,6 +83,26 @@ export default function App() {
       setIsLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    if (!authToken) {
+      return;
+    }
+
+    const loadLocation = async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        return;
+      }
+
+      const currentPosition = await Location.getCurrentPositionAsync({});
+      setCenterCoordinate([currentPosition.coords.longitude, currentPosition.coords.latitude]);
+    };
+
+    loadLocation().catch(() => {
+      // Keep default center if location fails.
+    });
+  }, [authToken]);
 
   const loadProfile = async (token: string) => {
     if (!apiUrl) {
@@ -325,7 +347,7 @@ export default function App() {
   return (
     <View style={styles.container}>
       <MapLibreGL.MapView style={styles.map} styleURL="https://demotiles.maplibre.org/style.json">
-        <MapLibreGL.Camera centerCoordinate={initialCenter} zoomLevel={12} />
+        <MapLibreGL.Camera centerCoordinate={centerCoordinate} zoomLevel={12} />
         {eventPins.map((pin) => (
           <MapLibreGL.PointAnnotation key={pin.id} id={pin.id} coordinate={pin.coordinate}>
             <View style={[styles.marker, { backgroundColor: pin.color }]}>
