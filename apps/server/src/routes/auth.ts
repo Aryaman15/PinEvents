@@ -32,7 +32,7 @@ authRouter.post("/signup", async (req, res) => {
   const user = await User.create({ email, passwordHash });
   try {
     const token = signToken(user.id);
-    return res.status(201).json({ token, user: { id: user.id } });
+    return res.status(201).json({ token, user: { id: user.id, displayName: user.displayName ?? "" } });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Server misconfiguration" });
@@ -59,7 +59,7 @@ authRouter.post("/login", async (req, res) => {
 
   try {
     const token = signToken(user.id);
-    return res.status(200).json({ token, user: { id: user.id } });
+    return res.status(200).json({ token, user: { id: user.id, displayName: user.displayName ?? "" } });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Server misconfiguration" });
