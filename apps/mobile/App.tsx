@@ -421,7 +421,7 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <MapLibreGL.MapView style={styles.map} mapStyle={mapStyleUrl}>
+      <MapLibreGL.MapView style={styles.map} mapStyle="https://api.maptiler.com/maps/streets-v4/style.json?key=UkfGJIzJRTu4ZQq0bmN7">
         <MapLibreGL.Camera centerCoordinate={centerCoordinate} zoomLevel={12} />
         <MapLibreGL.ShapeSource id="events" shape={eventFeatures} onPress={handleEventPress}>
           <MapLibreGL.CircleLayer
