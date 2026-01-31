@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import express from "express";
 import helmet from "helmet";
 import mongoose from "mongoose";
+import { authRouter } from "./routes/auth";
 
 dotenv.config();
 
@@ -16,6 +17,8 @@ app.use(express.json());
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+app.use("/auth", authRouter);
 
 const startServer = async () => {
   const mongoUri = process.env.MONGO_URI;

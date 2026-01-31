@@ -40,7 +40,7 @@ npm run dev:server
 ## Server notes
 
 - The server is an Express + TypeScript API.
-- Configure `MONGO_URI` (and optional `PORT`) in a local `.env` file.
+- Configure `MONGO_URI` (and optional `PORT`) plus `JWT_SECRET` for signing auth tokens in a local `.env` file.
 - Example:
 
 ```env
