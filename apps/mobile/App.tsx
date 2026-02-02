@@ -103,6 +103,7 @@ export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [centerCoordinate, setCenterCoordinate] = useState<[number, number]>(initialCenter);
+  const [isLocationUnavailable, setIsLocationUnavailable] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -199,15 +200,18 @@ export default function App() {
     const loadLocation = async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
+        setIsLocationUnavailable(true);
         return;
       }
 
       const currentPosition = await Location.getCurrentPositionAsync({});
       setCenterCoordinate([currentPosition.coords.longitude, currentPosition.coords.latitude]);
+      setIsLocationUnavailable(false);
     };
 
     loadLocation().catch(() => {
       // Keep default center if location fails.
+      setIsLocationUnavailable(true);
     });
   }, [authToken]);
 
@@ -507,6 +511,11 @@ export default function App() {
     setSearchQuery('');
     setSearchCategory('');
     setShowSearchCategoryMenu(false);
+  };
+
+  const handleDemoArea = () => {
+    setCenterCoordinate(initialCenter);
+    setIsLocationUnavailable(false);
   };
 
   const handleCategorySelect = (category: string) => {
@@ -1124,6 +1133,11 @@ export default function App() {
       <Pressable style={styles.createEventButton} onPress={() => setShowCreateEvent(true)}>
         <Text style={styles.createEventButtonText}>Create</Text>
       </Pressable>
+      {isLocationUnavailable ? (
+        <Pressable style={styles.demoAreaButton} onPress={handleDemoArea}>
+          <Text style={styles.demoAreaButtonText}>Demo Area</Text>
+        </Pressable>
+      ) : null}
       <View style={styles.attributionContainer}>
         <Text style={styles.attributionText}>© OpenStreetMap contributors</Text>
       </View>
@@ -1477,6 +1491,19 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   createEventButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  demoAreaButton: {
+    position: 'absolute',
+    top: 188,
+    left: 16,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  demoAreaButtonText: {
     color: '#fff',
     fontWeight: '600',
   },
