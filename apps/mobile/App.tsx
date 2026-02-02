@@ -124,6 +124,8 @@ export default function App() {
   const [events, setEvents] = useState<EventPin[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchCategory, setSearchCategory] = useState('');
   const [eventDraft, setEventDraft] = useState<EventDraft>({
     title: '',
     description: '',
@@ -200,10 +202,10 @@ export default function App() {
       return;
     }
 
-    loadEvents(authToken, centerCoordinate).catch(() => {
+    loadEvents(authToken, centerCoordinate, searchQuery, searchCategory).catch(() => {
       // Errors are handled in loadEvents.
     });
-  }, [authToken, centerCoordinate]);
+  }, [authToken, centerCoordinate, searchQuery, searchCategory]);
 
   useEffect(() => {
     if (!authToken || !selectedEventId) {
@@ -384,7 +386,12 @@ export default function App() {
     }
   };
 
-  const loadEvents = async (token: string, coordinate: [number, number]) => {
+  const loadEvents = async (
+    token: string,
+    coordinate: [number, number],
+    query = '',
+    category = ''
+  ) => {
     if (!apiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
@@ -392,8 +399,19 @@ export default function App() {
 
     setIsLoadingEvents(true);
     try {
+      const params = new URLSearchParams({
+        lat: String(coordinate[1]),
+        lng: String(coordinate[0]),
+        radiusKm: '5',
+      });
+      if (query.trim()) {
+        params.set('q', query.trim());
+      }
+      if (category.trim()) {
+        params.set('category', category.trim());
+      }
       const response = await fetch(
-        `${apiUrl}/events/near?lat=${coordinate[1]}&lng=${coordinate[0]}&radiusKm=5`,
+        `${apiUrl}/events/near?${params.toString()}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -456,6 +474,11 @@ export default function App() {
     } catch (error) {
       setErrorMessage('Unable to reach the server.');
     }
+  };
+
+  const handleSearchClear = () => {
+    setSearchQuery('');
+    setSearchCategory('');
   };
 
   const loadEventMessages = async (eventId: string) => {
@@ -957,6 +980,25 @@ export default function App() {
           />
         </MapLibreGL.ShapeSource>
       </MapLibreGL.MapView>
+      <View style={styles.searchBar}>
+        <TextInput
+          placeholder="Search activities"
+          placeholderTextColor="#9ca3af"
+          style={[styles.input, styles.searchInput]}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        <TextInput
+          placeholder="Category"
+          placeholderTextColor="#9ca3af"
+          style={[styles.input, styles.searchInput]}
+          value={searchCategory}
+          onChangeText={setSearchCategory}
+        />
+        <Pressable style={styles.secondaryButton} onPress={handleSearchClear}>
+          <Text style={styles.secondaryButtonText}>Clear</Text>
+        </Pressable>
+      </View>
       <View style={styles.attributionContainer}>
         <Text style={styles.attributionText}>© OpenStreetMap contributors</Text>
       </View>
@@ -1201,6 +1243,23 @@ const styles = StyleSheet.create({
   },
   map: {
     ...StyleSheet.absoluteFillObject,
+  },
+  searchBar: {
+    position: 'absolute',
+    top: 110,
+    left: 16,
+    right: 16,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 16,
+    padding: 12,
+    gap: 8,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  searchInput: {
+    marginBottom: 0,
   },
   attributionContainer: {
     position: 'absolute',
