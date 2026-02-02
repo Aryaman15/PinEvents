@@ -4,6 +4,7 @@ import express from "express";
 import helmet from "helmet";
 import mongoose from "mongoose";
 import { authRouter } from "./routes/auth";
+import { eventsRouter } from "./routes/events";
 import { meRouter } from "./routes/me";
 
 dotenv.config();
@@ -20,6 +21,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/auth", authRouter);
+app.use("/events", eventsRouter);
 app.use("/me", meRouter);
 
 const startServer = async () => {
