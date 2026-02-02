@@ -2,7 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import MapLibreGL from '@maplibre/maplibre-react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as Location from 'expo-location';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { io, Socket } from 'socket.io-client';
 
 MapLibreGL.setAccessToken('');
 
@@ -71,6 +72,15 @@ type JoinRequest = {
   createdAt: string;
 };
 
+type EventMessage = {
+  id: string;
+  eventId: string;
+  text: string;
+  createdAt: string;
+  displayName: string;
+  isMine?: boolean;
+};
+
 type EventDraft = {
   title: string;
   description: string;
@@ -107,6 +117,10 @@ export default function App() {
   const [isLoadingEventDetail, setIsLoadingEventDetail] = useState(false);
   const [isLoadingRequests, setIsLoadingRequests] = useState(false);
   const [isSubmittingJoinRequest, setIsSubmittingJoinRequest] = useState(false);
+  const [showChatScreen, setShowChatScreen] = useState(false);
+  const [chatEventId, setChatEventId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<EventMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState('');
   const [events, setEvents] = useState<EventPin[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
@@ -118,6 +132,7 @@ export default function App() {
     startTime: new Date().toISOString(),
     endTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   });
+  const socketRef = useRef<Socket | null>(null);
 
   const needsProfileSetup = useMemo(() => {
     return Boolean(authToken && profile && !profile.displayName.trim());
@@ -240,6 +255,30 @@ export default function App() {
       setIsLoadingRequests(false);
     });
   }, [selectedEventDetail?.id, selectedEventDetail?.viewer?.role]);
+
+  useEffect(() => {
+    if (!showChatScreen || !authToken || !chatEventId || !apiUrl) {
+      return;
+    }
+
+    const socket = io(apiUrl, { auth: { token: authToken } });
+    socketRef.current = socket;
+
+    socket.on('message', (message: EventMessage) => {
+      setChatMessages((prev) => [...prev, message]);
+    });
+
+    socket.emit('join', chatEventId, (response: { ok?: boolean; error?: string }) => {
+      if (response?.error) {
+        setErrorMessage(response.error);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [showChatScreen, authToken, chatEventId]);
 
   const loadProfile = async (token: string) => {
     if (!apiUrl) {
@@ -419,6 +458,53 @@ export default function App() {
     }
   };
 
+  const loadEventMessages = async (eventId: string) => {
+    if (!authToken) {
+      return;
+    }
+    if (!apiUrl) {
+      setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${apiUrl}/events/${eventId}/messages`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        setErrorMessage('Unable to load chat history.');
+        return;
+      }
+
+      const data = (await response.json()) as { messages?: EventMessage[] };
+      setChatMessages(data.messages ?? []);
+    } catch (error) {
+      setErrorMessage('Unable to reach the server.');
+    }
+  };
+
+  const handleOpenChat = () => {
+    if (!selectedEventDetail) {
+      return;
+    }
+    setChatEventId(selectedEventDetail.id);
+    setShowChatScreen(true);
+    loadEventMessages(selectedEventDetail.id).catch(() => {
+      // Errors handled in loadEventMessages.
+    });
+  };
+
+  const handleSendMessage = () => {
+    if (!chatDraft.trim() || !chatEventId) {
+      return;
+    }
+    socketRef.current?.emit('message', { eventId: chatEventId, text: chatDraft });
+    setChatDraft('');
+  };
+
   const handleRequestJoin = async () => {
     if (!authToken || !selectedEventDetail) {
       return;
@@ -541,6 +627,10 @@ export default function App() {
     setSelectedEventDetail(null);
     setSelectedEventRequests([]);
     setShowCreateEvent(false);
+    setShowChatScreen(false);
+    setChatEventId(null);
+    setChatMessages([]);
+    setChatDraft('');
   };
 
   const handleAddInterest = () => {
@@ -805,6 +895,40 @@ export default function App() {
     );
   }
 
+  if (showChatScreen && chatEventId) {
+    return (
+      <View style={styles.chatContainer}>
+        <View style={styles.chatHeader}>
+          <Text style={styles.chatTitle}>Event Chat</Text>
+          <Pressable style={styles.linkButton} onPress={() => setShowChatScreen(false)}>
+            <Text style={styles.linkText}>Back</Text>
+          </Pressable>
+        </View>
+        <ScrollView contentContainerStyle={styles.chatMessages}>
+          {chatMessages.map((message) => (
+            <View key={message.id} style={styles.chatMessage}>
+              <Text style={styles.chatDisplayName}>{message.displayName || 'Member'}</Text>
+              <Text style={styles.chatText}>{message.text}</Text>
+            </View>
+          ))}
+        </ScrollView>
+        <View style={styles.chatInputRow}>
+          <TextInput
+            placeholder="Write a message"
+            placeholderTextColor="#9ca3af"
+            style={[styles.input, styles.chatInput]}
+            value={chatDraft}
+            onChangeText={setChatDraft}
+          />
+          <Pressable style={styles.primaryButton} onPress={handleSendMessage}>
+            <Text style={styles.primaryButtonText}>Send</Text>
+          </Pressable>
+        </View>
+        <StatusBar style="dark" />
+      </View>
+    );
+  }
+
   const selectedEvent = selectedEventDetail ??
     (selectedEventId ? events.find((event) => event.id === selectedEventId) : null);
 
@@ -865,7 +989,7 @@ export default function App() {
             <Text style={styles.bottomSheetMeta}>Exact location hidden until approved.</Text>
           ) : null}
           {selectedEvent?.type === 'private' && canOpenChat ? (
-            <Pressable style={styles.primaryButton} onPress={() => {}}>
+            <Pressable style={styles.primaryButton} onPress={handleOpenChat}>
               <Text style={styles.primaryButtonText}>Open Chat</Text>
             </Pressable>
           ) : null}
@@ -1145,6 +1269,54 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#94a3b8',
     marginBottom: 12,
+  },
+  chatContainer: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+    padding: 16,
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  chatTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  chatMessages: {
+    paddingBottom: 16,
+  },
+  chatMessage: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  chatDisplayName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 4,
+  },
+  chatText: {
+    fontSize: 14,
+    color: '#0f172a',
+  },
+  chatInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  chatInput: {
+    flex: 1,
+    marginBottom: 0,
   },
   adminPanel: {
     marginTop: 8,

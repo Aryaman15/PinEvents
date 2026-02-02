@@ -3,7 +3,9 @@ import jwt from "jsonwebtoken";
 import { requireAuth } from "../middleware/requireAuth";
 import { Event } from "../models/Event";
 import { EventMember } from "../models/EventMember";
+import { EventMessage } from "../models/EventMessage";
 import { JoinRequest } from "../models/JoinRequest";
+import { User } from "../models/User";
 import { createEventSchema, eventsNearQuerySchema } from "../validation/events";
 
 export const eventsRouter = Router();
@@ -35,6 +37,30 @@ const blurLocation = (coordinates: [number, number], radiusMeters = 250) => {
   const deltaLng = (Math.random() * 2 - 1) * (radiusMeters / metersPerDegreeLng);
 
   return [lng + deltaLng, lat + deltaLat] as [number, number];
+};
+
+const isAcceptedMemberForEvent = async (
+  eventId: string,
+  userId?: string,
+  acceptedMembers?: Array<string | { toString(): string }>
+) => {
+  if (!userId) {
+    return false;
+  }
+
+  const membership = await EventMember.findOne({
+    eventId,
+    userId,
+    status: "accepted",
+  }).lean();
+
+  if (membership) {
+    return true;
+  }
+
+  return Boolean(
+    acceptedMembers?.some((member) => member.toString() === userId)
+  );
 };
 
 eventsRouter.post("/", requireAuth, async (req, res) => {
@@ -401,5 +427,49 @@ eventsRouter.post("/:id/requests/:requestId/reject", requireAuth, async (req, re
       id: joinRequest._id.toString(),
       status: joinRequest.status,
     },
+  });
+});
+
+eventsRouter.get("/:id/messages", requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const userId = req.userId;
+  const limitParam = Number(req.query.limit);
+  const limit = Number.isNaN(limitParam) ? 50 : Math.min(limitParam, 200);
+
+  if (!userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const event = await Event.findById(id).lean();
+  if (!event) {
+    return res.status(404).json({ error: "Event not found" });
+  }
+
+  const isAccepted = await isAcceptedMemberForEvent(id, userId, event.acceptedMembers);
+  if (!isAccepted) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const messages = await EventMessage.find({ eventId: event._id })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
+
+  const userIds = Array.from(new Set(messages.map((message) => message.userId.toString())));
+  const users = await User.find({ _id: { $in: userIds } })
+    .select("displayName")
+    .lean();
+  const displayNameById = new Map(users.map((user) => [user._id.toString(), user.displayName ?? ""]));
+
+  return res.status(200).json({
+    messages: messages
+      .map((message) => ({
+        id: message._id.toString(),
+        eventId: message.eventId.toString(),
+        text: message.text,
+        createdAt: message.createdAt,
+        displayName: displayNameById.get(message.userId.toString()) ?? "",
+      }))
+      .reverse(),
   });
 });
