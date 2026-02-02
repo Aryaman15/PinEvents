@@ -126,6 +126,11 @@ export default function App() {
   const [showCreateEvent, setShowCreateEvent] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchCategory, setSearchCategory] = useState('');
+  const [showSearchCategoryMenu, setShowSearchCategoryMenu] = useState(false);
+  const [showCreateCategoryMenu, setShowCreateCategoryMenu] = useState(false);
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [eventLocation, setEventLocation] = useState<[number, number] | null>(null);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
   const [eventDraft, setEventDraft] = useState<EventDraft>({
     title: '',
     description: '',
@@ -139,6 +144,15 @@ export default function App() {
   const needsProfileSetup = useMemo(() => {
     return Boolean(authToken && profile && !profile.displayName.trim());
   }, [authToken, profile]);
+
+  const availableCategories = useMemo(() => {
+    const eventCategories = events
+      .map((event) => event.category)
+      .filter((category) => category.trim().length > 0);
+    return Array.from(new Set([...eventCategories, ...customCategories])).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [events, customCategories]);
 
   const eventFeatures = useMemo(() => {
     return {
@@ -444,6 +458,17 @@ export default function App() {
     }
 
     try {
+      const finalCategory = newCategoryInput.trim() || eventDraft.category.trim();
+      if (!finalCategory) {
+        setErrorMessage('Please choose a category.');
+        return;
+      }
+      if (
+        finalCategory &&
+        !availableCategories.some((category) => category.toLowerCase() === finalCategory.toLowerCase())
+      ) {
+        setCustomCategories((prev) => [...prev, finalCategory]);
+      }
       const response = await fetch(`${apiUrl}/events`, {
         method: 'POST',
         headers: {
@@ -453,13 +478,13 @@ export default function App() {
         body: JSON.stringify({
           title: eventDraft.title,
           description: eventDraft.description,
-          category: eventDraft.category,
+          category: finalCategory,
           type: eventDraft.type,
           startTime: eventDraft.startTime,
           endTime: eventDraft.endTime,
           location: {
             type: 'Point',
-            coordinates: centerCoordinate,
+            coordinates: eventLocation ?? centerCoordinate,
           },
         }),
       });
@@ -470,6 +495,8 @@ export default function App() {
       }
 
       setShowCreateEvent(false);
+      setEventLocation(null);
+      setNewCategoryInput('');
       await loadEvents(authToken, centerCoordinate);
     } catch (error) {
       setErrorMessage('Unable to reach the server.');
@@ -479,6 +506,12 @@ export default function App() {
   const handleSearchClear = () => {
     setSearchQuery('');
     setSearchCategory('');
+    setShowSearchCategoryMenu(false);
+  };
+
+  const handleCategorySelect = (category: string) => {
+    setSearchCategory(category);
+    setShowSearchCategoryMenu(false);
   };
 
   const loadEventMessages = async (eventId: string) => {
@@ -851,13 +884,47 @@ export default function App() {
           onChangeText={(value) => setEventDraft((prev) => ({ ...prev, description: value }))}
           multiline
         />
-        <TextInput
-          placeholder="Category"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          value={eventDraft.category}
-          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, category: value }))}
-        />
+        <Text style={styles.sectionTitle}>Category</Text>
+        <View style={styles.categoryRow}>
+          <Pressable
+            style={styles.categoryButton}
+            onPress={() => setShowCreateCategoryMenu((prev) => !prev)}
+          >
+            <Text style={styles.categoryButtonText}>
+              {eventDraft.category || 'Select category'}
+            </Text>
+          </Pressable>
+          <TextInput
+            placeholder="Or add new"
+            placeholderTextColor="#9ca3af"
+            style={[styles.input, styles.categoryInput]}
+            value={newCategoryInput}
+            onChangeText={setNewCategoryInput}
+          />
+        </View>
+        {showCreateCategoryMenu ? (
+          <View style={styles.categoryMenu}>
+            <ScrollView>
+              {availableCategories.length ? (
+                availableCategories.map((category) => (
+                  <Pressable
+                    key={category}
+                    style={styles.categoryOption}
+                    onPress={() => {
+                      setEventDraft((prev) => ({ ...prev, category }));
+                      setNewCategoryInput('');
+                      setShowCreateCategoryMenu(false);
+                    }}
+                  >
+                    <Text style={styles.categoryOptionText}>{category}</Text>
+                  </Pressable>
+                ))
+              ) : (
+                <Text style={styles.bottomSheetMeta}>No categories yet.</Text>
+              )}
+            </ScrollView>
+          </View>
+        ) : null}
         <View style={styles.privacyRow}>
           <Pressable
             style={[
@@ -906,6 +973,36 @@ export default function App() {
           value={eventDraft.endTime}
           onChangeText={(value) => setEventDraft((prev) => ({ ...prev, endTime: value }))}
         />
+        <Text style={styles.sectionTitle}>Event location</Text>
+        <Text style={styles.bottomSheetMeta}>Zoom and tap to drop the event pin.</Text>
+        <View style={styles.createMapWrapper}>
+          <MapLibreGL.MapView
+            style={styles.createMap}
+            mapStyle={mapStyleUrl}
+            onPress={(event) => {
+              const coordinates = event.geometry?.coordinates as [number, number] | undefined;
+              if (coordinates) {
+                setEventLocation([coordinates[0], coordinates[1]]);
+              }
+            }}
+          >
+            <MapLibreGL.Camera
+              centerCoordinate={eventLocation ?? centerCoordinate}
+              zoomLevel={13}
+            />
+            {eventLocation ? (
+              <MapLibreGL.PointAnnotation
+                id="event-location"
+                coordinate={eventLocation}
+              />
+            ) : null}
+          </MapLibreGL.MapView>
+        </View>
+        {eventLocation ? (
+          <Text style={styles.bottomSheetMeta}>
+            Selected: {eventLocation[1].toFixed(4)}, {eventLocation[0].toFixed(4)}
+          </Text>
+        ) : null}
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
         <Pressable style={styles.primaryButton} onPress={handleCreateEvent}>
           <Text style={styles.primaryButtonText}>Create event</Text>
@@ -981,23 +1078,45 @@ export default function App() {
         </MapLibreGL.ShapeSource>
       </MapLibreGL.MapView>
       <View style={styles.searchBar}>
-        <TextInput
-          placeholder="Search activities"
-          placeholderTextColor="#9ca3af"
-          style={[styles.input, styles.searchInput]}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        <TextInput
-          placeholder="Category"
-          placeholderTextColor="#9ca3af"
-          style={[styles.input, styles.searchInput]}
-          value={searchCategory}
-          onChangeText={setSearchCategory}
-        />
-        <Pressable style={styles.secondaryButton} onPress={handleSearchClear}>
-          <Text style={styles.secondaryButtonText}>Clear</Text>
-        </Pressable>
+        <View style={styles.searchRow}>
+          <TextInput
+            placeholder="Search activities"
+            placeholderTextColor="#9ca3af"
+            style={[styles.input, styles.searchInput]}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          <Pressable
+            style={styles.categoryButton}
+            onPress={() => setShowSearchCategoryMenu((prev) => !prev)}
+          >
+            <Text style={styles.categoryButtonText}>
+              {searchCategory || 'Category'}
+            </Text>
+          </Pressable>
+          <Pressable style={styles.secondaryButton} onPress={handleSearchClear}>
+            <Text style={styles.secondaryButtonText}>Clear</Text>
+          </Pressable>
+        </View>
+        {showSearchCategoryMenu ? (
+          <View style={styles.categoryMenu}>
+            <ScrollView>
+              {availableCategories.length ? (
+                availableCategories.map((category) => (
+                  <Pressable
+                    key={category}
+                    style={styles.categoryOption}
+                    onPress={() => handleCategorySelect(category)}
+                  >
+                    <Text style={styles.categoryOptionText}>{category}</Text>
+                  </Pressable>
+                ))
+              ) : (
+                <Text style={styles.bottomSheetMeta}>No categories yet.</Text>
+              )}
+            </ScrollView>
+          </View>
+        ) : null}
       </View>
       <View style={styles.attributionContainer}>
         <Text style={styles.attributionText}>© OpenStreetMap contributors</Text>
@@ -1258,8 +1377,69 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   searchInput: {
+    flex: 1,
     marginBottom: 0,
+    paddingVertical: 8,
+    fontSize: 14,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  categoryInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  categoryButton: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minWidth: 110,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryButtonText: {
+    color: '#1e293b',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  categoryMenu: {
+    marginTop: 8,
+    maxHeight: 160,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    padding: 8,
+  },
+  categoryOption: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  categoryOptionText: {
+    fontSize: 14,
+    color: '#0f172a',
+  },
+  createMapWrapper: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    height: 220,
+    marginBottom: 12,
+  },
+  createMap: {
+    flex: 1,
   },
   attributionContainer: {
     position: 'absolute',
