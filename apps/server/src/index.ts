@@ -18,13 +18,41 @@ dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
+const configuredOrigins = (process.env.CORS_ORIGIN ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const defaultOrigins = [
+  "http://localhost:19006",
+  "http://localhost:19000",
+  "http://localhost:3000",
+];
+const allowedOrigins = configuredOrigins.length ? configuredOrigins : defaultOrigins;
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" },
+  cors: { origin: allowedOrigins, credentials: true },
 });
 
-app.use(helmet());
-app.use(cors());
+app.use(
+  helmet({
+    referrerPolicy: { policy: "no-referrer" },
+    crossOriginResourcePolicy: { policy: "same-site" },
+  })
+);
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 app.get("/health", (_req, res) => {

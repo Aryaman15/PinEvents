@@ -1,4 +1,5 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
 import { requireAuth } from "../middleware/requireAuth";
 import { Event } from "../models/Event";
@@ -6,9 +7,22 @@ import { EventMember } from "../models/EventMember";
 import { EventMessage } from "../models/EventMessage";
 import { JoinRequest } from "../models/JoinRequest";
 import { User } from "../models/User";
-import { createEventSchema, eventsNearQuerySchema } from "../validation/events";
+import {
+  createEventSchema,
+  eventIdParamSchema,
+  eventsNearQuerySchema,
+  joinRequestParamSchema,
+  messagesQuerySchema,
+} from "../validation/events";
 
 export const eventsRouter = Router();
+
+const joinLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const getUserIdFromAuthHeader = (authHeader?: string) => {
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -203,7 +217,11 @@ eventsRouter.get("/near", async (req, res) => {
 });
 
 eventsRouter.get("/:id", async (req, res) => {
-  const { id } = req.params;
+  const paramsResult = eventIdParamSchema.safeParse(req.params);
+  if (!paramsResult.success) {
+    return res.status(400).json({ error: "Invalid event id" });
+  }
+  const { id } = paramsResult.data;
   const authHeader = req.header("authorization");
   const userId = getUserIdFromAuthHeader(authHeader);
 
@@ -262,8 +280,12 @@ eventsRouter.get("/:id", async (req, res) => {
   });
 });
 
-eventsRouter.post("/:id/request-join", requireAuth, async (req, res) => {
-  const { id } = req.params;
+eventsRouter.post("/:id/request-join", requireAuth, joinLimiter, async (req, res) => {
+  const paramsResult = eventIdParamSchema.safeParse(req.params);
+  if (!paramsResult.success) {
+    return res.status(400).json({ error: "Invalid event id" });
+  }
+  const { id } = paramsResult.data;
   const userId = req.userId;
 
   if (!userId) {
@@ -331,7 +353,11 @@ const requireAdminForEvent = async (eventId: string, userId?: string) => {
 };
 
 eventsRouter.get("/:id/requests", requireAuth, async (req, res) => {
-  const { id } = req.params;
+  const paramsResult = eventIdParamSchema.safeParse(req.params);
+  if (!paramsResult.success) {
+    return res.status(400).json({ error: "Invalid event id" });
+  }
+  const { id } = paramsResult.data;
   const userId = req.userId;
 
   const event = await Event.findById(id).lean();
@@ -359,8 +385,12 @@ eventsRouter.get("/:id/requests", requireAuth, async (req, res) => {
   });
 });
 
-eventsRouter.post("/:id/requests/:requestId/approve", requireAuth, async (req, res) => {
-  const { id, requestId } = req.params;
+eventsRouter.post("/:id/requests/:requestId/approve", requireAuth, joinLimiter, async (req, res) => {
+  const paramsResult = joinRequestParamSchema.safeParse(req.params);
+  if (!paramsResult.success) {
+    return res.status(400).json({ error: "Invalid request" });
+  }
+  const { id, requestId } = paramsResult.data;
   const userId = req.userId;
 
   const event = await Event.findById(id);
@@ -392,6 +422,14 @@ eventsRouter.post("/:id/requests/:requestId/approve", requireAuth, async (req, r
     { $addToSet: { acceptedMembers: joinRequest.userId } }
   );
 
+  console.info("join_request_approved", {
+    eventId: event._id.toString(),
+    requestId: joinRequest._id.toString(),
+    approvedBy: userId,
+    userId: joinRequest.userId.toString(),
+    timestamp: new Date().toISOString(),
+  });
+
   return res.status(200).json({
     request: {
       id: joinRequest._id.toString(),
@@ -400,8 +438,12 @@ eventsRouter.post("/:id/requests/:requestId/approve", requireAuth, async (req, r
   });
 });
 
-eventsRouter.post("/:id/requests/:requestId/reject", requireAuth, async (req, res) => {
-  const { id, requestId } = req.params;
+eventsRouter.post("/:id/requests/:requestId/reject", requireAuth, joinLimiter, async (req, res) => {
+  const paramsResult = joinRequestParamSchema.safeParse(req.params);
+  if (!paramsResult.success) {
+    return res.status(400).json({ error: "Invalid request" });
+  }
+  const { id, requestId } = paramsResult.data;
   const userId = req.userId;
 
   const event = await Event.findById(id);
@@ -431,9 +473,17 @@ eventsRouter.post("/:id/requests/:requestId/reject", requireAuth, async (req, re
 });
 
 eventsRouter.get("/:id/messages", requireAuth, async (req, res) => {
-  const { id } = req.params;
+  const paramsResult = eventIdParamSchema.safeParse(req.params);
+  if (!paramsResult.success) {
+    return res.status(400).json({ error: "Invalid event id" });
+  }
+  const queryResult = messagesQuerySchema.safeParse(req.query);
+  if (!queryResult.success) {
+    return res.status(400).json({ error: "Invalid query" });
+  }
+  const { id } = paramsResult.data;
   const userId = req.userId;
-  const limitParam = Number(req.query.limit);
+  const limitParam = queryResult.data.limit ? Number(queryResult.data.limit) : NaN;
   const limit = Number.isNaN(limitParam) ? 50 : Math.min(limitParam, 200);
 
   if (!userId) {
