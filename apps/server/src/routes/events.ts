@@ -2,6 +2,8 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { requireAuth } from "../middleware/requireAuth";
 import { Event } from "../models/Event";
+import { EventMember } from "../models/EventMember";
+import { JoinRequest } from "../models/JoinRequest";
 import { createEventSchema, eventsNearQuerySchema } from "../validation/events";
 
 export const eventsRouter = Router();
@@ -55,15 +57,19 @@ eventsRouter.post("/", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "Invalid event time range" });
   }
 
-  const acceptedMembers =
-    rest.type === "private" ? [userId] : [userId];
-
   const event = await Event.create({
     ...rest,
     startTime: startDate,
     endTime: endDate,
     createdBy: userId,
-    acceptedMembers,
+    acceptedMembers: [userId],
+  });
+
+  await EventMember.create({
+    eventId: event._id,
+    userId,
+    role: "admin",
+    status: "accepted",
   });
 
   return res.status(201).json({
@@ -116,10 +122,27 @@ eventsRouter.get("/near", async (req, res) => {
     .limit(200)
     .lean();
 
+  const eventIds = events.map((event) => event._id.toString());
+  const membershipByEventId = new Set<string>();
+  if (userId && eventIds.length) {
+    const memberships = await EventMember.find({
+      eventId: { $in: eventIds },
+      userId,
+      status: "accepted",
+    })
+      .select("eventId")
+      .lean();
+    memberships.forEach((membership) => {
+      membershipByEventId.add(membership.eventId.toString());
+    });
+  }
+
   const response = events.map((event) => {
     const isPrivate = event.type === "private";
+    const isAcceptedFromMembers = membershipByEventId.has(event._id.toString());
     const isAcceptedMember = Boolean(
-      userId && event.acceptedMembers?.some((member) => member.toString() === userId)
+      isAcceptedFromMembers ||
+        (userId && event.acceptedMembers?.some((member) => member.toString() === userId))
     );
     const shouldReveal = !isPrivate || isAcceptedMember;
     const base = {
@@ -151,4 +174,232 @@ eventsRouter.get("/near", async (req, res) => {
   });
 
   return res.status(200).json({ events: response });
+});
+
+eventsRouter.get("/:id", async (req, res) => {
+  const { id } = req.params;
+  const authHeader = req.header("authorization");
+  const userId = getUserIdFromAuthHeader(authHeader);
+
+  const event = await Event.findById(id).lean();
+  if (!event) {
+    return res.status(404).json({ error: "Event not found" });
+  }
+
+  const isPrivate = event.type === "private";
+  let membership = null;
+  let joinRequest = null;
+
+  if (userId) {
+    membership = await EventMember.findOne({
+      eventId: event._id,
+      userId,
+      status: "accepted",
+    }).lean();
+    joinRequest = await JoinRequest.findOne({
+      eventId: event._id,
+      userId,
+    }).lean();
+  }
+
+  const isAcceptedMember = Boolean(
+    membership || (userId && event.acceptedMembers?.some((member) => member.toString() === userId))
+  );
+  const shouldReveal = !isPrivate || isAcceptedMember;
+
+  return res.status(200).json({
+    event: {
+      id: event._id.toString(),
+      title: event.title,
+      description: event.description,
+      category: event.category,
+      type: event.type,
+      startTime: event.startTime,
+      endTime: event.endTime,
+      createdBy: event.createdBy,
+      createdAt: event.createdAt,
+      ...(shouldReveal
+        ? { location: event.location }
+        : {
+            redactedLocation: {
+              type: "Point",
+              coordinates: blurLocation(event.location.coordinates as [number, number]),
+            },
+          }),
+      viewer: {
+        isMember: Boolean(isAcceptedMember),
+        role: membership?.role ?? null,
+        status: membership?.status ?? null,
+        joinRequestStatus: joinRequest?.status ?? null,
+      },
+    },
+  });
+});
+
+eventsRouter.post("/:id/request-join", requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const userId = req.userId;
+
+  if (!userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const event = await Event.findById(id);
+  if (!event) {
+    return res.status(404).json({ error: "Event not found" });
+  }
+
+  if (event.type !== "private") {
+    return res.status(400).json({ error: "Join requests are only needed for private events" });
+  }
+
+  const existingMembership = await EventMember.findOne({
+    eventId: event._id,
+    userId,
+    status: "accepted",
+  }).lean();
+  if (existingMembership) {
+    return res.status(200).json({ joinRequest: { status: "approved" } });
+  }
+
+  const existingRequest = await JoinRequest.findOne({
+    eventId: event._id,
+    userId,
+  });
+
+  if (existingRequest) {
+    if (existingRequest.status === "pending") {
+      return res.status(200).json({ joinRequest: existingRequest });
+    }
+    if (existingRequest.status === "approved") {
+      return res.status(200).json({ joinRequest: existingRequest });
+    }
+
+    existingRequest.status = "pending";
+    await existingRequest.save();
+    return res.status(200).json({ joinRequest: existingRequest });
+  }
+
+  const joinRequest = await JoinRequest.create({
+    eventId: event._id,
+    userId,
+    status: "pending",
+  });
+
+  return res.status(201).json({ joinRequest });
+});
+
+const requireAdminForEvent = async (eventId: string, userId?: string) => {
+  if (!userId) {
+    return false;
+  }
+
+  const membership = await EventMember.findOne({
+    eventId,
+    userId,
+    role: "admin",
+    status: "accepted",
+  }).lean();
+
+  return Boolean(membership);
+};
+
+eventsRouter.get("/:id/requests", requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const userId = req.userId;
+
+  const event = await Event.findById(id).lean();
+  if (!event) {
+    return res.status(404).json({ error: "Event not found" });
+  }
+
+  const isAdmin = await requireAdminForEvent(id, userId);
+  if (!isAdmin) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const requests = await JoinRequest.find({ eventId: event._id })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return res.status(200).json({
+    requests: requests.map((request) => ({
+      id: request._id.toString(),
+      eventId: request.eventId.toString(),
+      userId: request.userId.toString(),
+      status: request.status,
+      createdAt: request.createdAt,
+    })),
+  });
+});
+
+eventsRouter.post("/:id/requests/:requestId/approve", requireAuth, async (req, res) => {
+  const { id, requestId } = req.params;
+  const userId = req.userId;
+
+  const event = await Event.findById(id);
+  if (!event) {
+    return res.status(404).json({ error: "Event not found" });
+  }
+
+  const isAdmin = await requireAdminForEvent(id, userId);
+  if (!isAdmin) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const joinRequest = await JoinRequest.findOne({ _id: requestId, eventId: event._id });
+  if (!joinRequest) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  joinRequest.status = "approved";
+  await joinRequest.save();
+
+  await EventMember.findOneAndUpdate(
+    { eventId: event._id, userId: joinRequest.userId },
+    { eventId: event._id, userId: joinRequest.userId, role: "member", status: "accepted" },
+    { upsert: true }
+  );
+
+  await Event.updateOne(
+    { _id: event._id },
+    { $addToSet: { acceptedMembers: joinRequest.userId } }
+  );
+
+  return res.status(200).json({
+    request: {
+      id: joinRequest._id.toString(),
+      status: joinRequest.status,
+    },
+  });
+});
+
+eventsRouter.post("/:id/requests/:requestId/reject", requireAuth, async (req, res) => {
+  const { id, requestId } = req.params;
+  const userId = req.userId;
+
+  const event = await Event.findById(id);
+  if (!event) {
+    return res.status(404).json({ error: "Event not found" });
+  }
+
+  const isAdmin = await requireAdminForEvent(id, userId);
+  if (!isAdmin) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const joinRequest = await JoinRequest.findOne({ _id: requestId, eventId: event._id });
+  if (!joinRequest) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  joinRequest.status = "rejected";
+  await joinRequest.save();
+
+  return res.status(200).json({
+    request: {
+      id: joinRequest._id.toString(),
+      status: joinRequest.status,
+    },
+  });
 });

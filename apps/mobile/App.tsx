@@ -53,6 +53,24 @@ type EventPin = {
   redactedLocation?: { type: 'Point'; coordinates: [number, number] };
 };
 
+type ViewerInfo = {
+  isMember: boolean;
+  role: 'admin' | 'member' | null;
+  status: 'accepted' | null;
+  joinRequestStatus: 'pending' | 'approved' | 'rejected' | null;
+};
+
+type EventDetail = EventPin & {
+  viewer?: ViewerInfo;
+};
+
+type JoinRequest = {
+  id: string;
+  userId: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+};
+
 type EventDraft = {
   title: string;
   description: string;
@@ -84,6 +102,11 @@ export default function App() {
   const [interestInput, setInterestInput] = useState('');
   const [showProfileScreen, setShowProfileScreen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [selectedEventDetail, setSelectedEventDetail] = useState<EventDetail | null>(null);
+  const [selectedEventRequests, setSelectedEventRequests] = useState<JoinRequest[]>([]);
+  const [isLoadingEventDetail, setIsLoadingEventDetail] = useState(false);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [isSubmittingJoinRequest, setIsSubmittingJoinRequest] = useState(false);
   const [events, setEvents] = useState<EventPin[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
@@ -166,6 +189,57 @@ export default function App() {
       // Errors are handled in loadEvents.
     });
   }, [authToken, centerCoordinate]);
+
+  useEffect(() => {
+    if (!authToken || !selectedEventId) {
+      setSelectedEventDetail(null);
+      setSelectedEventRequests([]);
+      return;
+    }
+
+    const loadEventDetail = async () => {
+      if (!apiUrl) {
+        setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
+        return;
+      }
+
+      setIsLoadingEventDetail(true);
+      try {
+        const response = await fetch(`${apiUrl}/events/${selectedEventId}`, {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
+
+        if (!response.ok) {
+          setErrorMessage('Unable to load event details.');
+          return;
+        }
+
+        const data = (await response.json()) as { event?: EventDetail };
+        setSelectedEventDetail(data.event ?? null);
+      } catch (error) {
+        setErrorMessage('Unable to reach the server.');
+      } finally {
+        setIsLoadingEventDetail(false);
+      }
+    };
+
+    loadEventDetail().catch(() => {
+      setIsLoadingEventDetail(false);
+    });
+  }, [authToken, selectedEventId]);
+
+  useEffect(() => {
+    if (!selectedEventDetail?.viewer || selectedEventDetail.viewer.role !== 'admin') {
+      setSelectedEventRequests([]);
+      return;
+    }
+
+    loadJoinRequests(selectedEventDetail.id).catch(() => {
+      setIsLoadingRequests(false);
+    });
+  }, [selectedEventDetail?.id, selectedEventDetail?.viewer?.role]);
 
   const loadProfile = async (token: string) => {
     if (!apiUrl) {
@@ -345,6 +419,117 @@ export default function App() {
     }
   };
 
+  const handleRequestJoin = async () => {
+    if (!authToken || !selectedEventDetail) {
+      return;
+    }
+    if (!apiUrl) {
+      setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
+      return;
+    }
+
+    setIsSubmittingJoinRequest(true);
+    try {
+      const response = await fetch(`${apiUrl}/events/${selectedEventDetail.id}/request-join`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        setErrorMessage('Unable to request access.');
+        return;
+      }
+
+      const data = (await response.json()) as { joinRequest?: { status?: string } };
+      setSelectedEventDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              viewer: {
+                ...prev.viewer,
+                joinRequestStatus: (data.joinRequest?.status as ViewerInfo['joinRequestStatus']) ??
+                  'pending',
+              },
+            }
+          : prev
+      );
+    } catch (error) {
+      setErrorMessage('Unable to reach the server.');
+    } finally {
+      setIsSubmittingJoinRequest(false);
+    }
+  };
+
+  async function loadJoinRequests(eventId: string) {
+    if (!authToken) {
+      return;
+    }
+    if (!apiUrl) {
+      setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
+      return;
+    }
+
+    setIsLoadingRequests(true);
+    try {
+      const response = await fetch(`${apiUrl}/events/${eventId}/requests`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const data = (await response.json()) as { requests?: JoinRequest[] };
+      setSelectedEventRequests(data.requests ?? []);
+    } catch (error) {
+      setErrorMessage('Unable to reach the server.');
+    } finally {
+      setIsLoadingRequests(false);
+    }
+  }
+
+  const handleRequestDecision = async (requestId: string, action: 'approve' | 'reject') => {
+    if (!authToken || !selectedEventDetail) {
+      return;
+    }
+    if (!apiUrl) {
+      setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${apiUrl}/events/${selectedEventDetail.id}/requests/${requestId}/${action}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        setErrorMessage('Unable to update request.');
+        return;
+      }
+
+      setSelectedEventRequests((prev) =>
+        prev.map((request) =>
+          request.id === requestId
+            ? { ...request, status: action === 'approve' ? 'approved' : 'rejected' }
+            : request
+        )
+      );
+    } catch (error) {
+      setErrorMessage('Unable to reach the server.');
+    }
+  };
+
   const handleLogout = async () => {
     await SecureStore.deleteItemAsync(tokenKey);
     setAuthToken(null);
@@ -353,6 +538,8 @@ export default function App() {
     setShowProfileEditor(false);
     setShowProfileScreen(false);
     setSelectedEventId(null);
+    setSelectedEventDetail(null);
+    setSelectedEventRequests([]);
     setShowCreateEvent(false);
   };
 
@@ -618,9 +805,17 @@ export default function App() {
     );
   }
 
-  const selectedEvent = selectedEventId
-    ? events.find((event) => event.id === selectedEventId)
-    : null;
+  const selectedEvent = selectedEventDetail ??
+    (selectedEventId ? events.find((event) => event.id === selectedEventId) : null);
+
+  const canRequestJoin =
+    selectedEvent?.type === 'private' &&
+    !selectedEventDetail?.viewer?.isMember &&
+    selectedEventDetail?.viewer?.joinRequestStatus !== 'pending';
+
+  const isJoinPending = selectedEventDetail?.viewer?.joinRequestStatus === 'pending';
+  const isAdmin = selectedEventDetail?.viewer?.role === 'admin';
+  const canOpenChat = selectedEventDetail?.viewer?.isMember ?? false;
 
   return (
     <View style={styles.container}>
@@ -658,6 +853,72 @@ export default function App() {
           <Text style={styles.bottomSheetMeta}>
             {selectedEvent ? `${selectedEvent.category} • ${selectedEvent.type}` : ''}
           </Text>
+          {isLoadingEventDetail ? (
+            <Text style={styles.bottomSheetMeta}>Loading details...</Text>
+          ) : null}
+          {selectedEventDetail?.location ? (
+            <Text style={styles.bottomSheetMeta}>
+              Location: {selectedEventDetail.location.coordinates[1].toFixed(4)},{' '}
+              {selectedEventDetail.location.coordinates[0].toFixed(4)}
+            </Text>
+          ) : selectedEvent?.type === 'private' ? (
+            <Text style={styles.bottomSheetMeta}>Exact location hidden until approved.</Text>
+          ) : null}
+          {selectedEvent?.type === 'private' && canOpenChat ? (
+            <Pressable style={styles.primaryButton} onPress={() => {}}>
+              <Text style={styles.primaryButtonText}>Open Chat</Text>
+            </Pressable>
+          ) : null}
+          {canRequestJoin ? (
+            <Pressable
+              style={styles.primaryButton}
+              onPress={handleRequestJoin}
+              disabled={isSubmittingJoinRequest}
+            >
+              <Text style={styles.primaryButtonText}>
+                {isSubmittingJoinRequest ? 'Requesting...' : 'Request to Join'}
+              </Text>
+            </Pressable>
+          ) : null}
+          {isJoinPending ? (
+            <Text style={styles.bottomSheetMeta}>Join request pending approval.</Text>
+          ) : null}
+          {isAdmin ? (
+            <View style={styles.adminPanel}>
+              <Text style={styles.sectionTitle}>Join requests</Text>
+              {isLoadingRequests ? (
+                <Text style={styles.bottomSheetMeta}>Loading requests...</Text>
+              ) : null}
+              {selectedEventRequests.length ? (
+                selectedEventRequests.map((request) => (
+                  <View key={request.id} style={styles.requestRow}>
+                    <View style={styles.requestInfo}>
+                      <Text style={styles.requestText}>{request.userId}</Text>
+                      <Text style={styles.requestStatus}>{request.status}</Text>
+                    </View>
+                    <View style={styles.requestActions}>
+                      <Pressable
+                        style={styles.secondaryButton}
+                        onPress={() => handleRequestDecision(request.id, 'approve')}
+                        disabled={request.status !== 'pending'}
+                      >
+                        <Text style={styles.secondaryButtonText}>Approve</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.rejectButton}
+                        onPress={() => handleRequestDecision(request.id, 'reject')}
+                        disabled={request.status !== 'pending'}
+                      >
+                        <Text style={styles.rejectButtonText}>Reject</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.bottomSheetMeta}>No join requests yet.</Text>
+              )}
+            </View>
+          ) : null}
           <Pressable style={styles.secondaryButton} onPress={() => setSelectedEventId(null)}>
             <Text style={styles.secondaryButtonText}>Close</Text>
           </Pressable>
@@ -884,6 +1145,46 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#94a3b8',
     marginBottom: 12,
+  },
+  adminPanel: {
+    marginTop: 8,
+    marginBottom: 12,
+    gap: 8,
+  },
+  requestRow: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+  },
+  requestInfo: {
+    gap: 4,
+  },
+  requestText: {
+    fontSize: 12,
+    color: '#0f172a',
+    fontWeight: '600',
+  },
+  requestStatus: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  rejectButton: {
+    backgroundColor: '#fee2e2',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rejectButtonText: {
+    color: '#b91c1c',
+    fontSize: 14,
+    fontWeight: '600',
   },
   loadingEventsBadge: {
     position: 'absolute',
