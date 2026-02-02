@@ -1118,15 +1118,15 @@ export default function App() {
           </View>
         ) : null}
       </View>
-      <View style={styles.attributionContainer}>
-        <Text style={styles.attributionText}>© OpenStreetMap contributors</Text>
-      </View>
       <Pressable style={styles.profileButton} onPress={() => setShowProfileScreen(true)}>
         <Text style={styles.profileButtonText}>Profile</Text>
       </Pressable>
       <Pressable style={styles.createEventButton} onPress={() => setShowCreateEvent(true)}>
         <Text style={styles.createEventButtonText}>Create</Text>
       </Pressable>
+      <View style={styles.attributionContainer}>
+        <Text style={styles.attributionText}>© OpenStreetMap contributors</Text>
+      </View>
       {selectedEventId ? (
         <View style={styles.bottomSheet}>
           <Text style={styles.bottomSheetTitle}>
@@ -1365,7 +1365,7 @@ const styles = StyleSheet.create({
   },
   searchBar: {
     position: 'absolute',
-    top: 110,
+    top: 52,
     left: 16,
     right: 16,
     backgroundColor: 'rgba(255,255,255,0.96)',
@@ -1456,7 +1456,7 @@ const styles = StyleSheet.create({
   },
   profileButton: {
     position: 'absolute',
-    top: 52,
+    top: 140,
     right: 16,
     backgroundColor: 'rgba(15, 23, 42, 0.8)',
     paddingHorizontal: 14,
@@ -1469,7 +1469,7 @@ const styles = StyleSheet.create({
   },
   createEventButton: {
     position: 'absolute',
-    top: 52,
+    top: 140,
     left: 16,
     backgroundColor: 'rgba(37, 99, 235, 0.9)',
     paddingHorizontal: 14,
