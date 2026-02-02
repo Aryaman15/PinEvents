@@ -17,12 +17,27 @@ export const createEventSchema = z.object({
   location: locationSchema,
 });
 
+const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/);
+
 export const eventsNearQuerySchema = z.object({
-  lat: z.string().transform(Number),
-  lng: z.string().transform(Number),
-  radiusKm: z.string().transform(Number),
+  lat: z.string().transform(Number).refine(Number.isFinite, "Invalid latitude"),
+  lng: z.string().transform(Number).refine(Number.isFinite, "Invalid longitude"),
+  radiusKm: z.string().transform(Number).refine(Number.isFinite, "Invalid radius"),
   q: z.string().optional(),
   category: z.string().optional(),
+});
+
+export const eventIdParamSchema = z.object({
+  id: objectIdSchema,
+});
+
+export const joinRequestParamSchema = z.object({
+  id: objectIdSchema,
+  requestId: objectIdSchema,
+});
+
+export const messagesQuerySchema = z.object({
+  limit: z.string().optional(),
 });
 
 export type CreateEventInput = z.infer<typeof createEventSchema>;

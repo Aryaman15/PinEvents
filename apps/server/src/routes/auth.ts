@@ -1,10 +1,18 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { User } from "../models/User";
 import { authSchema } from "../validation/auth";
 
 export const authRouter = Router();
+
+const authLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const signToken = (userId: string) => {
   const secret = process.env.JWT_SECRET;
@@ -15,7 +23,7 @@ const signToken = (userId: string) => {
   return jwt.sign({ userId }, secret, { expiresIn: "7d" });
 };
 
-authRouter.post("/signup", async (req, res) => {
+authRouter.post("/signup", authLimiter, async (req, res) => {
   const parseResult = authSchema.safeParse(req.body);
   if (!parseResult.success) {
     return res.status(400).json({ error: "Invalid input" });
@@ -39,7 +47,7 @@ authRouter.post("/signup", async (req, res) => {
   }
 });
 
-authRouter.post("/login", async (req, res) => {
+authRouter.post("/login", authLimiter, async (req, res) => {
   const parseResult = authSchema.safeParse(req.body);
   if (!parseResult.success) {
     return res.status(400).json({ error: "Invalid input" });
