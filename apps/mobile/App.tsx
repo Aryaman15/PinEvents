@@ -781,6 +781,48 @@ export default function App() {
     return parsed.toLocaleString();
   };
 
+  const getDatePart = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return '';
+    }
+    return parsed.toISOString().slice(0, 10);
+  };
+
+  const getTimePart = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return '';
+    }
+    return parsed.toISOString().slice(11, 16);
+  };
+
+  const setDatePart = (value: string, nextDate: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    const [year, month, day] = nextDate.split('-').map(Number);
+    if (!year || !month || !day) {
+      return value;
+    }
+    parsed.setUTCFullYear(year, month - 1, day);
+    return parsed.toISOString();
+  };
+
+  const setTimePart = (value: string, nextTime: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    const [hours, minutes] = nextTime.split(':').map(Number);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+      return value;
+    }
+    parsed.setUTCHours(hours, minutes, 0, 0);
+    return parsed.toISOString();
+  };
+
   const handleShareEvent = async (eventToShare: EventPin | EventDetail) => {
     const message = [
       eventToShare.title,
@@ -1046,24 +1088,74 @@ export default function App() {
           <Text style={styles.sectionTitle}>Event timing</Text>
           <View style={styles.timingCard}>
             <Text style={styles.timingLabel}>Start</Text>
-            <TextInput
-              placeholder="Start time (ISO)"
-              placeholderTextColor="#9ca3af"
-              style={styles.input}
-              value={eventDraft.startTime}
-              onChangeText={(value) => setEventDraft((prev) => ({ ...prev, startTime: value }))}
-            />
+            <View style={styles.timingRow}>
+              <View style={styles.timingField}>
+                <Text style={styles.timingFieldLabel}>Date</Text>
+                <TextInput
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#9ca3af"
+                  style={[styles.input, styles.timingInput]}
+                  value={getDatePart(eventDraft.startTime)}
+                  onChangeText={(value) =>
+                    setEventDraft((prev) => ({
+                      ...prev,
+                      startTime: setDatePart(prev.startTime, value),
+                    }))
+                  }
+                />
+              </View>
+              <View style={styles.timingField}>
+                <Text style={styles.timingFieldLabel}>Time</Text>
+                <TextInput
+                  placeholder="HH:MM"
+                  placeholderTextColor="#9ca3af"
+                  style={[styles.input, styles.timingInput]}
+                  value={getTimePart(eventDraft.startTime)}
+                  onChangeText={(value) =>
+                    setEventDraft((prev) => ({
+                      ...prev,
+                      startTime: setTimePart(prev.startTime, value),
+                    }))
+                  }
+                />
+              </View>
+            </View>
             <Text style={styles.timingMeta}>Current: {formatDateTime(eventDraft.startTime)}</Text>
           </View>
           <View style={styles.timingCard}>
             <Text style={styles.timingLabel}>End</Text>
-            <TextInput
-              placeholder="End time (ISO)"
-              placeholderTextColor="#9ca3af"
-              style={styles.input}
-              value={eventDraft.endTime}
-              onChangeText={(value) => setEventDraft((prev) => ({ ...prev, endTime: value }))}
-            />
+            <View style={styles.timingRow}>
+              <View style={styles.timingField}>
+                <Text style={styles.timingFieldLabel}>Date</Text>
+                <TextInput
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#9ca3af"
+                  style={[styles.input, styles.timingInput]}
+                  value={getDatePart(eventDraft.endTime)}
+                  onChangeText={(value) =>
+                    setEventDraft((prev) => ({
+                      ...prev,
+                      endTime: setDatePart(prev.endTime, value),
+                    }))
+                  }
+                />
+              </View>
+              <View style={styles.timingField}>
+                <Text style={styles.timingFieldLabel}>Time</Text>
+                <TextInput
+                  placeholder="HH:MM"
+                  placeholderTextColor="#9ca3af"
+                  style={[styles.input, styles.timingInput]}
+                  value={getTimePart(eventDraft.endTime)}
+                  onChangeText={(value) =>
+                    setEventDraft((prev) => ({
+                      ...prev,
+                      endTime: setTimePart(prev.endTime, value),
+                    }))
+                  }
+                />
+              </View>
+            </View>
             <Text style={styles.timingMeta}>Current: {formatDateTime(eventDraft.endTime)}</Text>
           </View>
           <Text style={styles.sectionTitle}>Event location</Text>
@@ -1491,6 +1583,22 @@ const styles = StyleSheet.create({
   timingMeta: {
     fontSize: 12,
     color: '#64748b',
+  },
+  timingRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  timingField: {
+    flex: 1,
+  },
+  timingFieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 6,
+  },
+  timingInput: {
+    marginBottom: 0,
   },
   map: {
     ...StyleSheet.absoluteFillObject,
