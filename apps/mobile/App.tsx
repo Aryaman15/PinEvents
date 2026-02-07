@@ -1163,7 +1163,7 @@ export default function App() {
           <View style={styles.createMapWrapper}>
             <MapLibreGL.MapView
               style={styles.createMap}
-              mapStyle={mapStyleUrl}
+              mapStyle="https://api.maptiler.com/maps/streets-v4/style.json?key=UkfGJIzJRTu4ZQq0bmN7"
               onPress={(event) => {
                 const coordinates = event.geometry?.coordinates as [number, number] | undefined;
                 if (coordinates) {
