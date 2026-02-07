@@ -16,7 +16,10 @@ import { io, Socket } from 'socket.io-client';
 
 MapLibreGL.setAccessToken('');
 
-const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? '';
+const rawApiUrl = process.env.EXPO_PUBLIC_API_URL ?? '';
+const apiUrl = rawApiUrl.trim();
+const normalizedApiUrl =
+  apiUrl && !/^https?:\/\//i.test(apiUrl) ? `http://${apiUrl}` : apiUrl;
 const mapStyleUrl =
   process.env.EXPO_PUBLIC_MAP_STYLE_URL ??
   'https://demotiles.maplibre.org/styles/osm-bright-gl-style/style.json';
@@ -143,11 +146,13 @@ export default function App() {
   const socketRef = useRef<Socket | null>(null);
 
   const reportServerError = (fallbackMessage: string) => {
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set. Configure it in apps/mobile/.env.');
       return;
     }
-    setErrorMessage(`${fallbackMessage} Check that the API server is running at ${apiUrl}.`);
+    setErrorMessage(
+      `${fallbackMessage} Check that the API server is running at ${normalizedApiUrl}.`
+    );
   };
 
   const formatEventTime = (isoString: string) => {
@@ -281,14 +286,14 @@ export default function App() {
     }
 
     const loadEventDetail = async () => {
-      if (!apiUrl) {
+      if (!normalizedApiUrl) {
         setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
         return;
       }
 
       setIsLoadingEventDetail(true);
       try {
-        const response = await fetch(`${apiUrl}/events/${selectedEventId}`, {
+        const response = await fetch(`${normalizedApiUrl}/events/${selectedEventId}`, {
           headers: {
             Authorization: `Bearer ${authToken}`,
           },
@@ -325,11 +330,11 @@ export default function App() {
   }, [selectedEventDetail?.id, selectedEventDetail?.viewer?.role]);
 
   useEffect(() => {
-    if (!showChatScreen || !authToken || !chatEventId || !apiUrl) {
+    if (!showChatScreen || !authToken || !chatEventId || !normalizedApiUrl) {
       return;
     }
 
-    const socket = io(apiUrl, { auth: { token: authToken } });
+    const socket = io(normalizedApiUrl, { auth: { token: authToken } });
     socketRef.current = socket;
 
     socket.on('message', (message: EventMessage) => {
@@ -349,13 +354,13 @@ export default function App() {
   }, [showChatScreen, authToken, chatEventId]);
 
   const loadProfile = async (token: string) => {
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
 
     try {
-      const response = await fetch(`${apiUrl}/me`, {
+      const response = await fetch(`${normalizedApiUrl}/me`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -381,13 +386,13 @@ export default function App() {
 
   const handleAuth = async () => {
     setErrorMessage('');
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
 
     try {
-      const response = await fetch(`${apiUrl}/auth/${authMode}`, {
+      const response = await fetch(`${normalizedApiUrl}/auth/${authMode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -419,7 +424,7 @@ export default function App() {
     }
 
     try {
-      const response = await fetch(`${apiUrl}/me`, {
+      const response = await fetch(`${normalizedApiUrl}/me`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -458,7 +463,7 @@ export default function App() {
     query = '',
     category = ''
   ) => {
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
@@ -477,7 +482,7 @@ export default function App() {
         params.set('category', category.trim());
       }
       const response = await fetch(
-        `${apiUrl}/events/near?${params.toString()}`,
+        `${normalizedApiUrl}/events/near?${params.toString()}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -504,7 +509,7 @@ export default function App() {
     if (!authToken) {
       return;
     }
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
@@ -521,7 +526,7 @@ export default function App() {
       ) {
         setCustomCategories((prev) => [...prev, finalCategory]);
       }
-      const response = await fetch(`${apiUrl}/events`, {
+      const response = await fetch(`${normalizedApiUrl}/events`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -575,13 +580,13 @@ export default function App() {
     if (!authToken) {
       return;
     }
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
 
     try {
-      const response = await fetch(`${apiUrl}/events/${eventId}/messages`, {
+      const response = await fetch(`${normalizedApiUrl}/events/${eventId}/messages`, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
@@ -622,14 +627,16 @@ export default function App() {
     if (!authToken || !selectedEventDetail) {
       return;
     }
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
 
     setIsSubmittingJoinRequest(true);
     try {
-      const response = await fetch(`${apiUrl}/events/${selectedEventDetail.id}/request-join`, {
+      const response = await fetch(
+        `${normalizedApiUrl}/events/${selectedEventDetail.id}/request-join`,
+        {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -666,14 +673,14 @@ export default function App() {
     if (!authToken) {
       return;
     }
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
 
     setIsLoadingRequests(true);
     try {
-      const response = await fetch(`${apiUrl}/events/${eventId}/requests`, {
+      const response = await fetch(`${normalizedApiUrl}/events/${eventId}/requests`, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
@@ -696,14 +703,14 @@ export default function App() {
     if (!authToken || !selectedEventDetail) {
       return;
     }
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
 
     try {
       const response = await fetch(
-        `${apiUrl}/events/${selectedEventDetail.id}/requests/${requestId}/${action}`,
+        `${normalizedApiUrl}/events/${selectedEventDetail.id}/requests/${requestId}/${action}`,
         {
           method: 'POST',
           headers: {
@@ -884,6 +891,34 @@ export default function App() {
             <Text style={styles.linkText}>Back to profile</Text>
           </Pressable>
         ) : null}
+        <StatusBar style="dark" />
+      </ScrollView>
+    );
+  }
+
+  if (showProfileScreen && !profile) {
+    return (
+      <ScrollView contentContainerStyle={styles.profileContainer}>
+        <Text style={styles.title}>Profile unavailable</Text>
+        <Text style={styles.subtitle}>
+          We couldn't load your profile yet. Please confirm the API is reachable and try again.
+        </Text>
+        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+        <Pressable
+          style={styles.primaryButton}
+          onPress={() => {
+            if (authToken) {
+              loadProfile(authToken).catch(() => {
+                reportServerError('Unable to reach the server.');
+              });
+            }
+          }}
+        >
+          <Text style={styles.primaryButtonText}>Retry profile</Text>
+        </Pressable>
+        <Pressable style={styles.linkButton} onPress={() => setShowProfileScreen(false)}>
+          <Text style={styles.linkText}>Back to map</Text>
+        </Pressable>
         <StatusBar style="dark" />
       </ScrollView>
     );
