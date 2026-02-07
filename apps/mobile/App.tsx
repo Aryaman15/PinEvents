@@ -142,6 +142,54 @@ export default function App() {
   });
   const socketRef = useRef<Socket | null>(null);
 
+  const reportServerError = (fallbackMessage: string) => {
+    if (!apiUrl) {
+      setErrorMessage('EXPO_PUBLIC_API_URL is not set. Configure it in apps/mobile/.env.');
+      return;
+    }
+    setErrorMessage(`${fallbackMessage} Check that the API server is running at ${apiUrl}.`);
+  };
+
+  const formatEventTime = (isoString: string) => {
+    const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) {
+      return isoString;
+    }
+    return date.toLocaleString([], {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const updateEventTime = (type: 'start' | 'end', date: Date) => {
+    setEventDraft((prev) => {
+      const next = { ...prev };
+      if (type === 'start') {
+        next.startTime = date.toISOString();
+        const currentEnd = new Date(prev.endTime);
+        if (Number.isNaN(currentEnd.getTime()) || currentEnd <= date) {
+          next.endTime = new Date(date.getTime() + 60 * 60 * 1000).toISOString();
+        }
+      } else {
+        const start = new Date(prev.startTime);
+        const adjustedDate =
+          Number.isNaN(start.getTime()) || date > start
+            ? date
+            : new Date(start.getTime() + 60 * 60 * 1000);
+        next.endTime = adjustedDate.toISOString();
+      }
+      return next;
+    });
+  };
+
+  const resolveStartDate = () => {
+    const start = new Date(eventDraft.startTime);
+    return Number.isNaN(start.getTime()) ? new Date() : start;
+  };
+
   const needsProfileSetup = useMemo(() => {
     return Boolean(authToken && profile && !profile.displayName.trim());
   }, [authToken, profile]);
@@ -254,7 +302,7 @@ export default function App() {
         const data = (await response.json()) as { event?: EventDetail };
         setSelectedEventDetail(data.event ?? null);
       } catch (error) {
-        setErrorMessage('Unable to reach the server.');
+        reportServerError('Unable to reach the server.');
       } finally {
         setIsLoadingEventDetail(false);
       }
@@ -327,7 +375,7 @@ export default function App() {
       setProfile(data.user);
       setProfileDraft(data.user);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     }
   };
 
@@ -360,7 +408,7 @@ export default function App() {
       setAuthToken(data.token);
       await loadProfile(data.token);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     }
   };
 
@@ -400,7 +448,7 @@ export default function App() {
       setProfileDraft(data.user);
       setShowProfileEditor(false);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     }
   };
 
@@ -445,7 +493,7 @@ export default function App() {
       const data = (await response.json()) as { events?: EventPin[] };
       setEvents(data.events ?? []);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     } finally {
       setIsLoadingEvents(false);
     }
@@ -503,7 +551,7 @@ export default function App() {
       setNewCategoryInput('');
       await loadEvents(authToken, centerCoordinate);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     }
   };
 
@@ -547,7 +595,7 @@ export default function App() {
       const data = (await response.json()) as { messages?: EventMessage[] };
       setChatMessages(data.messages ?? []);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     }
   };
 
@@ -608,7 +656,7 @@ export default function App() {
           : prev
       );
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     } finally {
       setIsSubmittingJoinRequest(false);
     }
@@ -638,7 +686,7 @@ export default function App() {
       const data = (await response.json()) as { requests?: JoinRequest[] };
       setSelectedEventRequests(data.requests ?? []);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     } finally {
       setIsLoadingRequests(false);
     }
@@ -677,7 +725,7 @@ export default function App() {
         )
       );
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     }
   };
 
@@ -968,20 +1016,69 @@ export default function App() {
             </Text>
           </Pressable>
         </View>
-        <TextInput
-          placeholder="Start time (ISO)"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          value={eventDraft.startTime}
-          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, startTime: value }))}
-        />
-        <TextInput
-          placeholder="End time (ISO)"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          value={eventDraft.endTime}
-          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, endTime: value }))}
-        />
+        <Text style={styles.sectionTitle}>Timing</Text>
+        <View style={styles.timeCard}>
+          <View style={styles.timeHeader}>
+            <Text style={styles.timeLabel}>Starts</Text>
+            <Text style={styles.timeValue}>{formatEventTime(eventDraft.startTime)}</Text>
+          </View>
+          <View style={styles.timePillRow}>
+            <Pressable style={styles.timePill} onPress={() => updateEventTime('start', new Date())}>
+              <Text style={styles.timePillText}>Now</Text>
+            </Pressable>
+            <Pressable
+              style={styles.timePill}
+              onPress={() =>
+                updateEventTime('start', new Date(Date.now() + 30 * 60 * 1000))
+              }
+            >
+              <Text style={styles.timePillText}>+30m</Text>
+            </Pressable>
+            <Pressable
+              style={styles.timePill}
+              onPress={() =>
+                updateEventTime('start', new Date(Date.now() + 60 * 60 * 1000))
+              }
+            >
+              <Text style={styles.timePillText}>+1h</Text>
+            </Pressable>
+          </View>
+        </View>
+        <View style={styles.timeCard}>
+          <View style={styles.timeHeader}>
+            <Text style={styles.timeLabel}>Ends</Text>
+            <Text style={styles.timeValue}>{formatEventTime(eventDraft.endTime)}</Text>
+          </View>
+          <View style={styles.timePillRow}>
+            <Pressable
+              style={styles.timePill}
+              onPress={() => {
+                const start = resolveStartDate();
+                updateEventTime('end', new Date(start.getTime() + 60 * 60 * 1000));
+              }}
+            >
+              <Text style={styles.timePillText}>+1h</Text>
+            </Pressable>
+            <Pressable
+              style={styles.timePill}
+              onPress={() => {
+                const start = resolveStartDate();
+                updateEventTime('end', new Date(start.getTime() + 2 * 60 * 60 * 1000));
+              }}
+            >
+              <Text style={styles.timePillText}>+2h</Text>
+            </Pressable>
+            <Pressable
+              style={styles.timePill}
+              onPress={() => {
+                const start = resolveStartDate();
+                updateEventTime('end', new Date(start.getTime() + 4 * 60 * 60 * 1000));
+              }}
+            >
+              <Text style={styles.timePillText}>+4h</Text>
+            </Pressable>
+          </View>
+        </View>
         <Text style={styles.sectionTitle}>Event location</Text>
         <Text style={styles.bottomSheetMeta}>Zoom and tap to drop the event pin.</Text>
         <View style={styles.createMapWrapper}>
@@ -1390,6 +1487,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 3,
+    zIndex: 3,
   },
   searchRow: {
     flexDirection: 'row',
@@ -1476,6 +1574,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
+    zIndex: 3,
+    elevation: 4,
   },
   profileButtonText: {
     color: '#fff',
@@ -1489,6 +1589,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
+    zIndex: 3,
+    elevation: 4,
   },
   createEventButtonText: {
     color: '#fff',
@@ -1502,6 +1604,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
+    zIndex: 3,
+    elevation: 4,
   },
   demoAreaButtonText: {
     color: '#fff',
@@ -1519,6 +1623,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 6,
+    zIndex: 3,
   },
   bottomSheetTitle: {
     fontSize: 18,
@@ -1632,6 +1737,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
+    zIndex: 3,
+    elevation: 4,
   },
   loadingEventsText: {
     color: '#fff',
@@ -1661,5 +1768,45 @@ const styles = StyleSheet.create({
   },
   privacyToggleTextActive: {
     color: '#3730a3',
+  },
+  timeCard: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 16,
+    padding: 12,
+    backgroundColor: '#fff',
+    marginBottom: 12,
+  },
+  timeHeader: {
+    marginBottom: 10,
+  },
+  timeLabel: {
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    color: '#94a3b8',
+    fontWeight: '600',
+  },
+  timeValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginTop: 4,
+  },
+  timePillRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  timePill: {
+    backgroundColor: '#eef2ff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  timePillText: {
+    color: '#3730a3',
+    fontWeight: '600',
+    fontSize: 12,
   },
 });
