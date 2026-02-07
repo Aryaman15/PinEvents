@@ -16,7 +16,10 @@ import { io, Socket } from 'socket.io-client';
 
 MapLibreGL.setAccessToken('');
 
-const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? '';
+const rawApiUrl = process.env.EXPO_PUBLIC_API_URL ?? '';
+const apiUrl = rawApiUrl.trim();
+const normalizedApiUrl =
+  apiUrl && !/^https?:\/\//i.test(apiUrl) ? `http://${apiUrl}` : apiUrl;
 const mapStyleUrl =
   process.env.EXPO_PUBLIC_MAP_STYLE_URL ??
   'https://demotiles.maplibre.org/styles/osm-bright-gl-style/style.json';
@@ -142,6 +145,56 @@ export default function App() {
   });
   const socketRef = useRef<Socket | null>(null);
 
+  const reportServerError = (fallbackMessage: string) => {
+    if (!normalizedApiUrl) {
+      setErrorMessage('EXPO_PUBLIC_API_URL is not set. Configure it in apps/mobile/.env.');
+      return;
+    }
+    setErrorMessage(
+      `${fallbackMessage} Check that the API server is running at ${normalizedApiUrl}.`
+    );
+  };
+
+  const formatEventTime = (isoString: string) => {
+    const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) {
+      return isoString;
+    }
+    return date.toLocaleString([], {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const updateEventTime = (type: 'start' | 'end', date: Date) => {
+    setEventDraft((prev) => {
+      const next = { ...prev };
+      if (type === 'start') {
+        next.startTime = date.toISOString();
+        const currentEnd = new Date(prev.endTime);
+        if (Number.isNaN(currentEnd.getTime()) || currentEnd <= date) {
+          next.endTime = new Date(date.getTime() + 60 * 60 * 1000).toISOString();
+        }
+      } else {
+        const start = new Date(prev.startTime);
+        const adjustedDate =
+          Number.isNaN(start.getTime()) || date > start
+            ? date
+            : new Date(start.getTime() + 60 * 60 * 1000);
+        next.endTime = adjustedDate.toISOString();
+      }
+      return next;
+    });
+  };
+
+  const resolveStartDate = () => {
+    const start = new Date(eventDraft.startTime);
+    return Number.isNaN(start.getTime()) ? new Date() : start;
+  };
+
   const needsProfileSetup = useMemo(() => {
     return Boolean(authToken && profile && !profile.displayName.trim());
   }, [authToken, profile]);
@@ -233,14 +286,14 @@ export default function App() {
     }
 
     const loadEventDetail = async () => {
-      if (!apiUrl) {
+      if (!normalizedApiUrl) {
         setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
         return;
       }
 
       setIsLoadingEventDetail(true);
       try {
-        const response = await fetch(`${apiUrl}/events/${selectedEventId}`, {
+        const response = await fetch(`${normalizedApiUrl}/events/${selectedEventId}`, {
           headers: {
             Authorization: `Bearer ${authToken}`,
           },
@@ -254,7 +307,7 @@ export default function App() {
         const data = (await response.json()) as { event?: EventDetail };
         setSelectedEventDetail(data.event ?? null);
       } catch (error) {
-        setErrorMessage('Unable to reach the server.');
+        reportServerError('Unable to reach the server.');
       } finally {
         setIsLoadingEventDetail(false);
       }
@@ -277,11 +330,11 @@ export default function App() {
   }, [selectedEventDetail?.id, selectedEventDetail?.viewer?.role]);
 
   useEffect(() => {
-    if (!showChatScreen || !authToken || !chatEventId || !apiUrl) {
+    if (!showChatScreen || !authToken || !chatEventId || !normalizedApiUrl) {
       return;
     }
 
-    const socket = io(apiUrl, { auth: { token: authToken } });
+    const socket = io(normalizedApiUrl, { auth: { token: authToken } });
     socketRef.current = socket;
 
     socket.on('message', (message: EventMessage) => {
@@ -301,13 +354,13 @@ export default function App() {
   }, [showChatScreen, authToken, chatEventId]);
 
   const loadProfile = async (token: string) => {
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
 
     try {
-      const response = await fetch(`${apiUrl}/me`, {
+      const response = await fetch(`${normalizedApiUrl}/me`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -327,19 +380,19 @@ export default function App() {
       setProfile(data.user);
       setProfileDraft(data.user);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     }
   };
 
   const handleAuth = async () => {
     setErrorMessage('');
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
 
     try {
-      const response = await fetch(`${apiUrl}/auth/${authMode}`, {
+      const response = await fetch(`${normalizedApiUrl}/auth/${authMode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -360,7 +413,7 @@ export default function App() {
       setAuthToken(data.token);
       await loadProfile(data.token);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     }
   };
 
@@ -371,7 +424,7 @@ export default function App() {
     }
 
     try {
-      const response = await fetch(`${apiUrl}/me`, {
+      const response = await fetch(`${normalizedApiUrl}/me`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -400,7 +453,7 @@ export default function App() {
       setProfileDraft(data.user);
       setShowProfileEditor(false);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     }
   };
 
@@ -410,7 +463,7 @@ export default function App() {
     query = '',
     category = ''
   ) => {
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
@@ -429,7 +482,7 @@ export default function App() {
         params.set('category', category.trim());
       }
       const response = await fetch(
-        `${apiUrl}/events/near?${params.toString()}`,
+        `${normalizedApiUrl}/events/near?${params.toString()}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -445,7 +498,7 @@ export default function App() {
       const data = (await response.json()) as { events?: EventPin[] };
       setEvents(data.events ?? []);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     } finally {
       setIsLoadingEvents(false);
     }
@@ -456,7 +509,7 @@ export default function App() {
     if (!authToken) {
       return;
     }
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
@@ -473,7 +526,7 @@ export default function App() {
       ) {
         setCustomCategories((prev) => [...prev, finalCategory]);
       }
-      const response = await fetch(`${apiUrl}/events`, {
+      const response = await fetch(`${normalizedApiUrl}/events`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -503,7 +556,7 @@ export default function App() {
       setNewCategoryInput('');
       await loadEvents(authToken, centerCoordinate);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     }
   };
 
@@ -527,13 +580,13 @@ export default function App() {
     if (!authToken) {
       return;
     }
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
 
     try {
-      const response = await fetch(`${apiUrl}/events/${eventId}/messages`, {
+      const response = await fetch(`${normalizedApiUrl}/events/${eventId}/messages`, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
@@ -547,7 +600,7 @@ export default function App() {
       const data = (await response.json()) as { messages?: EventMessage[] };
       setChatMessages(data.messages ?? []);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     }
   };
 
@@ -574,14 +627,16 @@ export default function App() {
     if (!authToken || !selectedEventDetail) {
       return;
     }
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
 
     setIsSubmittingJoinRequest(true);
     try {
-      const response = await fetch(`${apiUrl}/events/${selectedEventDetail.id}/request-join`, {
+      const response = await fetch(
+        `${normalizedApiUrl}/events/${selectedEventDetail.id}/request-join`,
+        {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -608,7 +663,7 @@ export default function App() {
           : prev
       );
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     } finally {
       setIsSubmittingJoinRequest(false);
     }
@@ -618,14 +673,14 @@ export default function App() {
     if (!authToken) {
       return;
     }
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
 
     setIsLoadingRequests(true);
     try {
-      const response = await fetch(`${apiUrl}/events/${eventId}/requests`, {
+      const response = await fetch(`${normalizedApiUrl}/events/${eventId}/requests`, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
@@ -638,7 +693,7 @@ export default function App() {
       const data = (await response.json()) as { requests?: JoinRequest[] };
       setSelectedEventRequests(data.requests ?? []);
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     } finally {
       setIsLoadingRequests(false);
     }
@@ -648,14 +703,14 @@ export default function App() {
     if (!authToken || !selectedEventDetail) {
       return;
     }
-    if (!apiUrl) {
+    if (!normalizedApiUrl) {
       setErrorMessage('EXPO_PUBLIC_API_URL is not set.');
       return;
     }
 
     try {
       const response = await fetch(
-        `${apiUrl}/events/${selectedEventDetail.id}/requests/${requestId}/${action}`,
+        `${normalizedApiUrl}/events/${selectedEventDetail.id}/requests/${requestId}/${action}`,
         {
           method: 'POST',
           headers: {
@@ -677,7 +732,7 @@ export default function App() {
         )
       );
     } catch (error) {
-      setErrorMessage('Unable to reach the server.');
+      reportServerError('Unable to reach the server.');
     }
   };
 
@@ -841,6 +896,34 @@ export default function App() {
     );
   }
 
+  if (showProfileScreen && !profile) {
+    return (
+      <ScrollView contentContainerStyle={styles.profileContainer}>
+        <Text style={styles.title}>Profile unavailable</Text>
+        <Text style={styles.subtitle}>
+          We couldn't load your profile yet. Please confirm the API is reachable and try again.
+        </Text>
+        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+        <Pressable
+          style={styles.primaryButton}
+          onPress={() => {
+            if (authToken) {
+              loadProfile(authToken).catch(() => {
+                reportServerError('Unable to reach the server.');
+              });
+            }
+          }}
+        >
+          <Text style={styles.primaryButtonText}>Retry profile</Text>
+        </Pressable>
+        <Pressable style={styles.linkButton} onPress={() => setShowProfileScreen(false)}>
+          <Text style={styles.linkText}>Back to map</Text>
+        </Pressable>
+        <StatusBar style="dark" />
+      </ScrollView>
+    );
+  }
+
   if (profile && showProfileScreen && !showProfileEditor) {
     return (
       <ScrollView contentContainerStyle={styles.profileContainer}>
@@ -968,20 +1051,69 @@ export default function App() {
             </Text>
           </Pressable>
         </View>
-        <TextInput
-          placeholder="Start time (ISO)"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          value={eventDraft.startTime}
-          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, startTime: value }))}
-        />
-        <TextInput
-          placeholder="End time (ISO)"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          value={eventDraft.endTime}
-          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, endTime: value }))}
-        />
+        <Text style={styles.sectionTitle}>Timing</Text>
+        <View style={styles.timeCard}>
+          <View style={styles.timeHeader}>
+            <Text style={styles.timeLabel}>Starts</Text>
+            <Text style={styles.timeValue}>{formatEventTime(eventDraft.startTime)}</Text>
+          </View>
+          <View style={styles.timePillRow}>
+            <Pressable style={styles.timePill} onPress={() => updateEventTime('start', new Date())}>
+              <Text style={styles.timePillText}>Now</Text>
+            </Pressable>
+            <Pressable
+              style={styles.timePill}
+              onPress={() =>
+                updateEventTime('start', new Date(Date.now() + 30 * 60 * 1000))
+              }
+            >
+              <Text style={styles.timePillText}>+30m</Text>
+            </Pressable>
+            <Pressable
+              style={styles.timePill}
+              onPress={() =>
+                updateEventTime('start', new Date(Date.now() + 60 * 60 * 1000))
+              }
+            >
+              <Text style={styles.timePillText}>+1h</Text>
+            </Pressable>
+          </View>
+        </View>
+        <View style={styles.timeCard}>
+          <View style={styles.timeHeader}>
+            <Text style={styles.timeLabel}>Ends</Text>
+            <Text style={styles.timeValue}>{formatEventTime(eventDraft.endTime)}</Text>
+          </View>
+          <View style={styles.timePillRow}>
+            <Pressable
+              style={styles.timePill}
+              onPress={() => {
+                const start = resolveStartDate();
+                updateEventTime('end', new Date(start.getTime() + 60 * 60 * 1000));
+              }}
+            >
+              <Text style={styles.timePillText}>+1h</Text>
+            </Pressable>
+            <Pressable
+              style={styles.timePill}
+              onPress={() => {
+                const start = resolveStartDate();
+                updateEventTime('end', new Date(start.getTime() + 2 * 60 * 60 * 1000));
+              }}
+            >
+              <Text style={styles.timePillText}>+2h</Text>
+            </Pressable>
+            <Pressable
+              style={styles.timePill}
+              onPress={() => {
+                const start = resolveStartDate();
+                updateEventTime('end', new Date(start.getTime() + 4 * 60 * 60 * 1000));
+              }}
+            >
+              <Text style={styles.timePillText}>+4h</Text>
+            </Pressable>
+          </View>
+        </View>
         <Text style={styles.sectionTitle}>Event location</Text>
         <Text style={styles.bottomSheetMeta}>Zoom and tap to drop the event pin.</Text>
         <View style={styles.createMapWrapper}>
@@ -1390,6 +1522,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 3,
+    zIndex: 3,
   },
   searchRow: {
     flexDirection: 'row',
@@ -1476,6 +1609,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
+    zIndex: 3,
+    elevation: 4,
   },
   profileButtonText: {
     color: '#fff',
@@ -1489,6 +1624,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
+    zIndex: 3,
+    elevation: 4,
   },
   createEventButtonText: {
     color: '#fff',
@@ -1502,6 +1639,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
+    zIndex: 3,
+    elevation: 4,
   },
   demoAreaButtonText: {
     color: '#fff',
@@ -1519,6 +1658,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 6,
+    zIndex: 3,
   },
   bottomSheetTitle: {
     fontSize: 18,
@@ -1632,6 +1772,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
+    zIndex: 3,
+    elevation: 4,
   },
   loadingEventsText: {
     color: '#fff',
@@ -1661,5 +1803,45 @@ const styles = StyleSheet.create({
   },
   privacyToggleTextActive: {
     color: '#3730a3',
+  },
+  timeCard: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 16,
+    padding: 12,
+    backgroundColor: '#fff',
+    marginBottom: 12,
+  },
+  timeHeader: {
+    marginBottom: 10,
+  },
+  timeLabel: {
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    color: '#94a3b8',
+    fontWeight: '600',
+  },
+  timeValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginTop: 4,
+  },
+  timePillRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  timePill: {
+    backgroundColor: '#eef2ff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  timePillText: {
+    color: '#3730a3',
+    fontWeight: '600',
+    fontSize: 12,
   },
 });
