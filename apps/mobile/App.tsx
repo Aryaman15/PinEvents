@@ -313,6 +313,12 @@ export default function App() {
         },
       });
 
+      if (response.status === 401) {
+        setErrorMessage('Session expired. Please log in again.');
+        await handleLogout();
+        return;
+      }
+
       if (!response.ok) {
         setErrorMessage('Unable to load profile.');
         return;
@@ -329,6 +335,15 @@ export default function App() {
     } catch (error) {
       setErrorMessage('Unable to reach the server.');
     }
+  };
+
+  const handleOpenProfile = () => {
+    if (authToken && !profile) {
+      loadProfile(authToken).catch(() => {
+        // Errors handled in loadProfile.
+      });
+    }
+    setShowProfileScreen(true);
   };
 
   const handleAuth = async () => {
@@ -384,6 +399,12 @@ export default function App() {
           avatarUrl: profileDraft.avatarUrl,
         }),
       });
+
+      if (response.status === 401) {
+        setErrorMessage('Session expired. Please log in again.');
+        await handleLogout();
+        return;
+      }
 
       if (!response.ok) {
         setErrorMessage('Unable to save profile.');
@@ -492,6 +513,12 @@ export default function App() {
           },
         }),
       });
+
+      if (response.status === 401) {
+        setErrorMessage('Session expired. Please log in again.');
+        await handleLogout();
+        return;
+      }
 
       if (!response.ok) {
         setErrorMessage('Unable to create event.');
@@ -1127,7 +1154,7 @@ export default function App() {
           </View>
         ) : null}
       </View>
-      <Pressable style={styles.profileButton} onPress={() => setShowProfileScreen(true)}>
+      <Pressable style={styles.profileButton} onPress={handleOpenProfile}>
         <Text style={styles.profileButtonText}>Profile</Text>
       </Pressable>
       <Pressable style={styles.createEventButton} onPress={() => setShowCreateEvent(true)}>
