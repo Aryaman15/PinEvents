@@ -5,11 +5,14 @@ import * as Location from 'expo-location';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
+  SafeAreaView,
   View,
 } from 'react-native';
 import { io, Socket } from 'socket.io-client';
@@ -534,6 +537,19 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (!showCreateEvent) {
+      return;
+    }
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setShowCreateEvent(false);
+      return true;
+    });
+
+    return () => subscription.remove();
+  }, [showCreateEvent]);
+
   const handleSearchClear = () => {
     setSearchQuery('');
     setSearchCategory('');
@@ -757,6 +773,31 @@ export default function App() {
     setSelectedEventId(eventId);
   };
 
+  const formatDateTime = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return 'Invalid date';
+    }
+    return parsed.toLocaleString();
+  };
+
+  const handleShareEvent = async (eventToShare: EventPin | EventDetail) => {
+    const message = [
+      eventToShare.title,
+      eventToShare.description,
+      `Category: ${eventToShare.category}`,
+      `Type: ${eventToShare.type}`,
+      `Starts: ${formatDateTime(eventToShare.startTime)}`,
+      `Ends: ${formatDateTime(eventToShare.endTime)}`,
+    ].join('\n');
+
+    try {
+      await Share.share({ message });
+    } catch (error) {
+      setErrorMessage('Unable to share event.');
+    }
+  };
+
   if (isLoading) {
     return (
       <View style={styles.centered}>
@@ -810,244 +851,261 @@ export default function App() {
 
   if (needsProfileSetup || showProfileEditor) {
     return (
-      <ScrollView contentContainerStyle={styles.profileContainer}>
-        <Text style={styles.title}>{needsProfileSetup ? 'Finish your profile' : 'Edit profile'}</Text>
-        <Text style={styles.subtitle}>Add a display name and interests to continue.</Text>
-        <TextInput
-          placeholder="Display name"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          value={profileDraft.displayName}
-          onChangeText={(value) => setProfileDraft((prev) => ({ ...prev, displayName: value }))}
-        />
-        <TextInput
-          placeholder="Bio"
-          placeholderTextColor="#9ca3af"
-          style={[styles.input, styles.textArea]}
-          value={profileDraft.bio}
-          onChangeText={(value) => setProfileDraft((prev) => ({ ...prev, bio: value }))}
-          multiline
-        />
-        <TextInput
-          placeholder="Avatar URL (optional)"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          value={profileDraft.avatarUrl}
-          onChangeText={(value) => setProfileDraft((prev) => ({ ...prev, avatarUrl: value }))}
-        />
-        <View style={styles.interestRow}>
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={[styles.profileContainer, styles.safeAreaContent]}>
+          <Text style={styles.title}>
+            {needsProfileSetup ? 'Finish your profile' : 'Edit profile'}
+          </Text>
+          <Text style={styles.subtitle}>Add a display name and interests to continue.</Text>
           <TextInput
-            placeholder="Add interest"
+            placeholder="Display name"
             placeholderTextColor="#9ca3af"
-            style={[styles.input, styles.interestInput]}
-            value={interestInput}
-            onChangeText={setInterestInput}
+            style={styles.input}
+            value={profileDraft.displayName}
+            onChangeText={(value) => setProfileDraft((prev) => ({ ...prev, displayName: value }))}
           />
-          <Pressable style={styles.secondaryButton} onPress={handleAddInterest}>
-            <Text style={styles.secondaryButtonText}>Add</Text>
-          </Pressable>
-        </View>
-        <View style={styles.tagWrap}>
-          {profileDraft.interests.map((item) => (
-            <Pressable key={item} style={styles.tag} onPress={() => handleRemoveInterest(item)}>
-              <Text style={styles.tagText}>{item} ✕</Text>
+          <TextInput
+            placeholder="Bio"
+            placeholderTextColor="#9ca3af"
+            style={[styles.input, styles.textArea]}
+            value={profileDraft.bio}
+            onChangeText={(value) => setProfileDraft((prev) => ({ ...prev, bio: value }))}
+            multiline
+          />
+          <TextInput
+            placeholder="Avatar URL (optional)"
+            placeholderTextColor="#9ca3af"
+            style={styles.input}
+            value={profileDraft.avatarUrl}
+            onChangeText={(value) => setProfileDraft((prev) => ({ ...prev, avatarUrl: value }))}
+          />
+          <View style={styles.interestRow}>
+            <TextInput
+              placeholder="Add interest"
+              placeholderTextColor="#9ca3af"
+              style={[styles.input, styles.interestInput]}
+              value={interestInput}
+              onChangeText={setInterestInput}
+            />
+            <Pressable style={styles.secondaryButton} onPress={handleAddInterest}>
+              <Text style={styles.secondaryButtonText}>Add</Text>
             </Pressable>
-          ))}
-        </View>
-        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-        <Pressable style={styles.primaryButton} onPress={handleSaveProfile}>
-          <Text style={styles.primaryButtonText}>Save profile</Text>
-        </Pressable>
-        {!needsProfileSetup ? (
-          <Pressable style={styles.linkButton} onPress={() => setShowProfileEditor(false)}>
-            <Text style={styles.linkText}>Back to profile</Text>
+          </View>
+          <View style={styles.tagWrap}>
+            {profileDraft.interests.map((item) => (
+              <Pressable key={item} style={styles.tag} onPress={() => handleRemoveInterest(item)}>
+                <Text style={styles.tagText}>{item} ✕</Text>
+              </Pressable>
+            ))}
+          </View>
+          {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+          <Pressable style={styles.primaryButton} onPress={handleSaveProfile}>
+            <Text style={styles.primaryButtonText}>Save profile</Text>
           </Pressable>
-        ) : null}
-        <StatusBar style="dark" />
-      </ScrollView>
+          {!needsProfileSetup ? (
+            <Pressable style={styles.linkButton} onPress={() => setShowProfileEditor(false)}>
+              <Text style={styles.linkText}>Back to profile</Text>
+            </Pressable>
+          ) : null}
+          <StatusBar style="dark" />
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
   if (profile && showProfileScreen && !showProfileEditor) {
     return (
-      <ScrollView contentContainerStyle={styles.profileContainer}>
-        <Text style={styles.title}>Your profile</Text>
-        <Text style={styles.profileValue}>{profile.displayName || 'No display name set'}</Text>
-        {profile.bio ? <Text style={styles.profileBio}>{profile.bio}</Text> : null}
-        <Text style={styles.sectionTitle}>Interests</Text>
-        <View style={styles.tagWrap}>
-          {profile.interests.length ? (
-            profile.interests.map((interest) => (
-              <View key={interest} style={styles.tag}>
-                <Text style={styles.tagText}>{interest}</Text>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.mutedText}>No interests added yet.</Text>
-          )}
-        </View>
-        <Pressable style={styles.primaryButton} onPress={() => setShowProfileEditor(true)}>
-          <Text style={styles.primaryButtonText}>Edit profile</Text>
-        </Pressable>
-        <Pressable style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>Log out</Text>
-        </Pressable>
-        <Pressable style={styles.linkButton} onPress={() => setShowProfileScreen(false)}>
-          <Text style={styles.linkText}>Back to map</Text>
-        </Pressable>
-        <StatusBar style="dark" />
-      </ScrollView>
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={[styles.profileContainer, styles.safeAreaContent]}>
+          <Text style={styles.title}>Your profile</Text>
+          <Text style={styles.profileValue}>{profile.displayName || 'No display name set'}</Text>
+          {profile.bio ? <Text style={styles.profileBio}>{profile.bio}</Text> : null}
+          <Text style={styles.sectionTitle}>Interests</Text>
+          <View style={styles.tagWrap}>
+            {profile.interests.length ? (
+              profile.interests.map((interest) => (
+                <View key={interest} style={styles.tag}>
+                  <Text style={styles.tagText}>{interest}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.mutedText}>No interests added yet.</Text>
+            )}
+          </View>
+          <Pressable style={styles.primaryButton} onPress={() => setShowProfileEditor(true)}>
+            <Text style={styles.primaryButtonText}>Edit profile</Text>
+          </Pressable>
+          <Pressable style={styles.logoutButton} onPress={handleLogout}>
+            <Text style={styles.logoutButtonText}>Log out</Text>
+          </Pressable>
+          <Pressable style={styles.linkButton} onPress={() => setShowProfileScreen(false)}>
+            <Text style={styles.linkText}>Back to map</Text>
+          </Pressable>
+          <StatusBar style="dark" />
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
   if (showCreateEvent) {
     return (
-      <ScrollView contentContainerStyle={styles.profileContainer}>
-        <Text style={styles.title}>Create event</Text>
-        <Text style={styles.subtitle}>Share what is happening around you.</Text>
-        <TextInput
-          placeholder="Title"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          value={eventDraft.title}
-          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, title: value }))}
-        />
-        <TextInput
-          placeholder="Description"
-          placeholderTextColor="#9ca3af"
-          style={[styles.input, styles.textArea]}
-          value={eventDraft.description}
-          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, description: value }))}
-          multiline
-        />
-        <Text style={styles.sectionTitle}>Category</Text>
-        <View style={styles.categoryRow}>
-          <Pressable
-            style={styles.categoryButton}
-            onPress={() => setShowCreateCategoryMenu((prev) => !prev)}
-          >
-            <Text style={styles.categoryButtonText}>
-              {eventDraft.category || 'Select category'}
-            </Text>
-          </Pressable>
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={[styles.profileContainer, styles.safeAreaContent]}>
+          <Text style={styles.title}>Create event</Text>
+          <Text style={styles.subtitle}>Share what is happening around you.</Text>
           <TextInput
-            placeholder="Or add new"
+            placeholder="Title"
             placeholderTextColor="#9ca3af"
-            style={[styles.input, styles.categoryInput]}
-            value={newCategoryInput}
-            onChangeText={setNewCategoryInput}
+            style={styles.input}
+            value={eventDraft.title}
+            onChangeText={(value) => setEventDraft((prev) => ({ ...prev, title: value }))}
           />
-        </View>
-        {showCreateCategoryMenu ? (
-          <View style={styles.categoryMenu}>
-            <ScrollView>
-              {availableCategories.length ? (
-                availableCategories.map((category) => (
-                  <Pressable
-                    key={category}
-                    style={styles.categoryOption}
-                    onPress={() => {
-                      setEventDraft((prev) => ({ ...prev, category }));
-                      setNewCategoryInput('');
-                      setShowCreateCategoryMenu(false);
-                    }}
-                  >
-                    <Text style={styles.categoryOptionText}>{category}</Text>
-                  </Pressable>
-                ))
-              ) : (
-                <Text style={styles.bottomSheetMeta}>No categories yet.</Text>
-              )}
-            </ScrollView>
-          </View>
-        ) : null}
-        <View style={styles.privacyRow}>
-          <Pressable
-            style={[
-              styles.privacyToggle,
-              eventDraft.type === 'public' && styles.privacyToggleActive,
-            ]}
-            onPress={() => setEventDraft((prev) => ({ ...prev, type: 'public' }))}
-          >
-            <Text
-              style={[
-                styles.privacyToggleText,
-                eventDraft.type === 'public' && styles.privacyToggleTextActive,
-              ]}
+          <TextInput
+            placeholder="Description"
+            placeholderTextColor="#9ca3af"
+            style={[styles.input, styles.textArea]}
+            value={eventDraft.description}
+            onChangeText={(value) => setEventDraft((prev) => ({ ...prev, description: value }))}
+            multiline
+          />
+          <Text style={styles.sectionTitle}>Category</Text>
+          <View style={styles.categoryRow}>
+            <Pressable
+              style={styles.categoryButton}
+              onPress={() => setShowCreateCategoryMenu((prev) => !prev)}
             >
-              Public
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[
-              styles.privacyToggle,
-              eventDraft.type === 'private' && styles.privacyToggleActive,
-            ]}
-            onPress={() => setEventDraft((prev) => ({ ...prev, type: 'private' }))}
-          >
-            <Text
-              style={[
-                styles.privacyToggleText,
-                eventDraft.type === 'private' && styles.privacyToggleTextActive,
-              ]}
-            >
-              Private
-            </Text>
-          </Pressable>
-        </View>
-        <TextInput
-          placeholder="Start time (ISO)"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          value={eventDraft.startTime}
-          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, startTime: value }))}
-        />
-        <TextInput
-          placeholder="End time (ISO)"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          value={eventDraft.endTime}
-          onChangeText={(value) => setEventDraft((prev) => ({ ...prev, endTime: value }))}
-        />
-        <Text style={styles.sectionTitle}>Event location</Text>
-        <Text style={styles.bottomSheetMeta}>Zoom and tap to drop the event pin.</Text>
-        <View style={styles.createMapWrapper}>
-          <MapLibreGL.MapView
-            style={styles.createMap}
-            mapStyle={mapStyleUrl}
-            onPress={(event) => {
-              const coordinates = event.geometry?.coordinates as [number, number] | undefined;
-              if (coordinates) {
-                setEventLocation([coordinates[0], coordinates[1]]);
-              }
-            }}
-          >
-            <MapLibreGL.Camera
-              centerCoordinate={eventLocation ?? centerCoordinate}
-              zoomLevel={13}
+              <Text style={styles.categoryButtonText}>
+                {eventDraft.category || 'Select category'}
+              </Text>
+            </Pressable>
+            <TextInput
+              placeholder="Or add new"
+              placeholderTextColor="#9ca3af"
+              style={[styles.input, styles.categoryInput]}
+              value={newCategoryInput}
+              onChangeText={setNewCategoryInput}
             />
-            {eventLocation ? (
-              <MapLibreGL.PointAnnotation
-                id="event-location"
-                coordinate={eventLocation}
+          </View>
+          {showCreateCategoryMenu ? (
+            <View style={styles.categoryMenu}>
+              <ScrollView>
+                {availableCategories.length ? (
+                  availableCategories.map((category) => (
+                    <Pressable
+                      key={category}
+                      style={styles.categoryOption}
+                      onPress={() => {
+                        setEventDraft((prev) => ({ ...prev, category }));
+                        setNewCategoryInput('');
+                        setShowCreateCategoryMenu(false);
+                      }}
+                    >
+                      <Text style={styles.categoryOptionText}>{category}</Text>
+                    </Pressable>
+                  ))
+                ) : (
+                  <Text style={styles.bottomSheetMeta}>No categories yet.</Text>
+                )}
+              </ScrollView>
+            </View>
+          ) : null}
+          <View style={styles.privacyRow}>
+            <Pressable
+              style={[
+                styles.privacyToggle,
+                eventDraft.type === 'public' && styles.privacyToggleActive,
+              ]}
+              onPress={() => setEventDraft((prev) => ({ ...prev, type: 'public' }))}
+            >
+              <Text
+                style={[
+                  styles.privacyToggleText,
+                  eventDraft.type === 'public' && styles.privacyToggleTextActive,
+                ]}
+              >
+                Public
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.privacyToggle,
+                eventDraft.type === 'private' && styles.privacyToggleActive,
+              ]}
+              onPress={() => setEventDraft((prev) => ({ ...prev, type: 'private' }))}
+            >
+              <Text
+                style={[
+                  styles.privacyToggleText,
+                  eventDraft.type === 'private' && styles.privacyToggleTextActive,
+                ]}
+              >
+                Private
+              </Text>
+            </Pressable>
+          </View>
+          <Text style={styles.sectionTitle}>Event timing</Text>
+          <View style={styles.timingCard}>
+            <Text style={styles.timingLabel}>Start</Text>
+            <TextInput
+              placeholder="Start time (ISO)"
+              placeholderTextColor="#9ca3af"
+              style={styles.input}
+              value={eventDraft.startTime}
+              onChangeText={(value) => setEventDraft((prev) => ({ ...prev, startTime: value }))}
+            />
+            <Text style={styles.timingMeta}>Current: {formatDateTime(eventDraft.startTime)}</Text>
+          </View>
+          <View style={styles.timingCard}>
+            <Text style={styles.timingLabel}>End</Text>
+            <TextInput
+              placeholder="End time (ISO)"
+              placeholderTextColor="#9ca3af"
+              style={styles.input}
+              value={eventDraft.endTime}
+              onChangeText={(value) => setEventDraft((prev) => ({ ...prev, endTime: value }))}
+            />
+            <Text style={styles.timingMeta}>Current: {formatDateTime(eventDraft.endTime)}</Text>
+          </View>
+          <Text style={styles.sectionTitle}>Event location</Text>
+          <Text style={styles.bottomSheetMeta}>Zoom and tap to drop the event pin.</Text>
+          <View style={styles.createMapWrapper}>
+            <MapLibreGL.MapView
+              style={styles.createMap}
+              mapStyle={mapStyleUrl}
+              onPress={(event) => {
+                const coordinates = event.geometry?.coordinates as [number, number] | undefined;
+                if (coordinates) {
+                  setEventLocation([coordinates[0], coordinates[1]]);
+                }
+              }}
+            >
+              <MapLibreGL.Camera
+                centerCoordinate={eventLocation ?? centerCoordinate}
+                zoomLevel={13}
               />
-            ) : null}
-          </MapLibreGL.MapView>
-        </View>
-        {eventLocation ? (
-          <Text style={styles.bottomSheetMeta}>
-            Selected: {eventLocation[1].toFixed(4)}, {eventLocation[0].toFixed(4)}
-          </Text>
-        ) : null}
-        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-        <Pressable style={styles.primaryButton} onPress={handleCreateEvent}>
-          <Text style={styles.primaryButtonText}>Create event</Text>
-        </Pressable>
-        <Pressable style={styles.linkButton} onPress={() => setShowCreateEvent(false)}>
-          <Text style={styles.linkText}>Back to map</Text>
-        </Pressable>
-        <StatusBar style="dark" />
-      </ScrollView>
+              {eventLocation ? (
+                <MapLibreGL.PointAnnotation
+                  id="event-location"
+                  coordinate={eventLocation}
+                />
+              ) : null}
+            </MapLibreGL.MapView>
+          </View>
+          {eventLocation ? (
+            <Text style={styles.bottomSheetMeta}>
+              Selected: {eventLocation[1].toFixed(4)}, {eventLocation[0].toFixed(4)}
+            </Text>
+          ) : null}
+          {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+          <Pressable style={styles.primaryButton} onPress={handleCreateEvent}>
+            <Text style={styles.primaryButtonText}>Create event</Text>
+          </Pressable>
+          <Pressable style={styles.linkButton} onPress={() => setShowCreateEvent(false)}>
+            <Text style={styles.linkText}>Back to map</Text>
+          </Pressable>
+          <StatusBar style="dark" />
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
@@ -1195,6 +1253,14 @@ export default function App() {
               <Text style={styles.primaryButtonText}>Open Chat</Text>
             </Pressable>
           ) : null}
+          {selectedEvent ? (
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={() => handleShareEvent(selectedEvent)}
+            >
+              <Text style={styles.secondaryButtonText}>Share</Text>
+            </Pressable>
+          ) : null}
           {canRequestJoin ? (
             <Pressable
               style={styles.primaryButton}
@@ -1261,6 +1327,13 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  safeAreaContent: {
+    paddingBottom: 32,
+  },
   container: {
     flex: 1,
   },
@@ -1399,6 +1472,24 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   mutedText: {
+    color: '#64748b',
+  },
+  timingCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    marginBottom: 12,
+  },
+  timingLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 6,
+  },
+  timingMeta: {
+    fontSize: 12,
     color: '#64748b',
   },
   map: {
