@@ -36,23 +36,30 @@ const io = new Server(server, {
 app.use(
   helmet({
     referrerPolicy: { policy: "no-referrer" },
-    crossOriginResourcePolicy: { policy: "same-site" },
+    crossOriginResourcePolicy: false,
   })
 );
+// app.use(
+//   cors({
+//     origin: (origin, callback) => {
+//       if (!origin) {
+//         return callback(null, true);
+//       }
+//       if (allowedOrigins.includes(origin)) {
+//         return callback(null, true);
+//       }
+//       return callback(new Error("Not allowed by CORS"));
+//     },
+//     credentials: true,
+//   })
+// );
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin) {
-        return callback(null, true);
-      }
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error("Not allowed by CORS"));
-    },
+    origin: true,
     credentials: true,
   })
 );
+
 app.use(express.json());
 
 app.get("/health", (_req, res) => {
@@ -177,8 +184,8 @@ const startServer = async () => {
     console.log("Connected to MongoDB.");
   }
 
-  server.listen(port, () => {
-    console.log(`PinEvents API running on http://localhost:${port}`);
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`PinEvents API running on http://0.0.0.0:${port}`);
   });
 };
 
