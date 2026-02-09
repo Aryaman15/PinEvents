@@ -33,3 +33,18 @@ export const isAcceptedMember = async (
 
   return Boolean(event.acceptedMembers?.some((member) => hasUserId(member) === userId));
 };
+
+export const isAdminForEvent = async (eventId: string, userId?: string) => {
+  if (!userId) {
+    return false;
+  }
+
+  const membership = await EventMember.findOne({
+    eventId,
+    userId,
+    role: "admin",
+    status: "accepted",
+  }).lean();
+
+  return Boolean(membership);
+};

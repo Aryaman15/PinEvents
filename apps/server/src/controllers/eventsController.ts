@@ -12,32 +12,8 @@ import {
   messagesQuerySchema,
 } from "../validation/events";
 import { getUserIdFromAuthHeader } from "../utils/jwt";
-import { isAcceptedMember } from "../services/eventMembership";
-
-const blurLocation = (coordinates: [number, number], radiusMeters = 250) => {
-  const [lng, lat] = coordinates;
-  const metersPerDegreeLat = 111_111;
-  const deltaLat = (Math.random() * 2 - 1) * (radiusMeters / metersPerDegreeLat);
-  const metersPerDegreeLng = metersPerDegreeLat * Math.cos((lat * Math.PI) / 180);
-  const deltaLng = (Math.random() * 2 - 1) * (radiusMeters / metersPerDegreeLng);
-
-  return [lng + deltaLng, lat + deltaLat] as [number, number];
-};
-
-const requireAdminForEvent = async (eventId: string, userId?: string) => {
-  if (!userId) {
-    return false;
-  }
-
-  const membership = await EventMember.findOne({
-    eventId,
-    userId,
-    role: "admin",
-    status: "accepted",
-  }).lean();
-
-  return Boolean(membership);
-};
+import { isAcceptedMember, isAdminForEvent } from "../services/eventMembership";
+import { blurLocation } from "../utils/geo";
 
 export const createEvent: RequestHandler = async (req, res) => {
   const userId = req.userId;
@@ -312,7 +288,7 @@ export const listJoinRequests: RequestHandler = async (req, res) => {
     return res.status(404).json({ error: "Event not found" });
   }
 
-  const isAdmin = await requireAdminForEvent(id, userId);
+  const isAdmin = await isAdminForEvent(id, userId);
   if (!isAdmin) {
     return res.status(403).json({ error: "Forbidden" });
   }
@@ -345,7 +321,7 @@ export const approveJoinRequest: RequestHandler = async (req, res) => {
     return res.status(404).json({ error: "Event not found" });
   }
 
-  const isAdmin = await requireAdminForEvent(id, userId);
+  const isAdmin = await isAdminForEvent(id, userId);
   if (!isAdmin) {
     return res.status(403).json({ error: "Forbidden" });
   }
@@ -398,7 +374,7 @@ export const rejectJoinRequest: RequestHandler = async (req, res) => {
     return res.status(404).json({ error: "Event not found" });
   }
 
-  const isAdmin = await requireAdminForEvent(id, userId);
+  const isAdmin = await isAdminForEvent(id, userId);
   if (!isAdmin) {
     return res.status(403).json({ error: "Forbidden" });
   }
