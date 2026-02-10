@@ -20,8 +20,11 @@ export const signup: RequestHandler = async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 12);
   const user = await User.create({ email, passwordHash });
   try {
-    const token = signToken(user.id);
-    return res.status(201).json({ token, user: { id: user.id, displayName: user.displayName ?? "" } });
+    const token = signToken(user._id.toString());
+    return res.status(201).json({
+      token,
+      user: { id: user._id.toString(), displayName: user.displayName ?? "" },
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Server misconfiguration" });
@@ -35,7 +38,7 @@ export const login: RequestHandler = async (req, res) => {
   }
 
   const { email, password } = parseResult.data;
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ email }).lean();
 
   if (!user) {
     return res.status(401).json({ error: "Invalid credentials" });
@@ -47,8 +50,11 @@ export const login: RequestHandler = async (req, res) => {
   }
 
   try {
-    const token = signToken(user.id);
-    return res.status(200).json({ token, user: { id: user.id, displayName: user.displayName ?? "" } });
+    const token = signToken(user._id.toString());
+    return res.status(200).json({
+      token,
+      user: { id: user._id.toString(), displayName: user.displayName ?? "" },
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Server misconfiguration" });

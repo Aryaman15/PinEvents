@@ -5,4 +5,4 @@ import { requireAuth } from "../middleware/requireAuth";
 export const meRouter = Router();
 
 meRouter.get("/", requireAuth, getProfile);
-meRouter.put("/", requireAuth, updateProfile);
+meRouter.patch("/", requireAuth, updateProfile);

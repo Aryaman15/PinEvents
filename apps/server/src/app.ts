@@ -1,9 +1,9 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
-import { authRouter } from "./routes/auth";
-import { eventsRouter } from "./routes/events";
-import { meRouter } from "./routes/me";
+import { authRouter } from "./routes/auth.routes";
+import { eventsRouter } from "./routes/events.routes";
+import { meRouter } from "./routes/me.routes";
 import { getAllowedOrigins } from "./config/cors";
 
 export const createApp = () => {
@@ -14,13 +14,13 @@ export const createApp = () => {
     helmet({
       referrerPolicy: { policy: "no-referrer" },
       crossOriginResourcePolicy: false,
-    })
+    }),
   );
   app.use(
     cors({
       origin: true,
       credentials: true,
-    })
+    }),
   );
 
   app.use(express.json());

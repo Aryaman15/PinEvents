@@ -1,12 +1,18 @@
 import { Event } from "../models/Event";
 import { EventMember } from "../models/EventMember";
+import mongoose from "mongoose";
 
-const hasUserId = (value: string | { toString(): string }) => value.toString();
+// const hasUserId = (value: string | { toString(): string }) => value.toString();
+type IdLike = string | mongoose.Types.ObjectId;
+
+const normalizeId = (id: IdLike): string => {
+  return id.toString();
+};
 
 export const isAcceptedMember = async (
   eventId: string,
   userId?: string,
-  acceptedMembers?: Array<string | { toString(): string }>
+  acceptedMembers?: IdLike[],
 ) => {
   if (!userId) {
     return false;
@@ -23,7 +29,7 @@ export const isAcceptedMember = async (
   }
 
   if (acceptedMembers) {
-    return acceptedMembers.some((member) => hasUserId(member) === userId);
+    return acceptedMembers.some((member) => normalizeId(member) === userId);
   }
 
   const event = await Event.findById(eventId).select("acceptedMembers").lean();
@@ -31,7 +37,9 @@ export const isAcceptedMember = async (
     return false;
   }
 
-  return Boolean(event.acceptedMembers?.some((member) => hasUserId(member) === userId));
+  return Boolean(
+    event.acceptedMembers.some((member) => normalizeId(member) === userId),
+  );
 };
 
 export const isAdminForEvent = async (eventId: string, userId?: string) => {
