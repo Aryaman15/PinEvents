@@ -37,4 +37,4 @@ export type EventDocument = InferSchemaType<typeof eventSchema> & {
   _id: mongoose.Types.ObjectId;
 };
 
-export const Event = mongoose.model("Event", eventSchema);
+export const Event = mongoose.model<EventDocument>("Event", eventSchema);

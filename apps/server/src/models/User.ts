@@ -1,16 +1,17 @@
-import mongoose from "mongoose";
+// import { UserDocument } from './User';
+import mongoose, {Schema, InferSchemaType, mongo } from "mongoose";
 
-export interface UserDocument extends mongoose.Document {
-  email: string;
-  passwordHash: string;
-  displayName?: string;
-  bio?: string;
-  interests: string[];
-  avatarUrl?: string;
-  createdAt: Date;
-}
+// export interface UserDocument extends mongoose.Document {
+//   email: string;
+//   passwordHash: string;
+//   displayName?: string;
+//   bio?: string;
+//   interests: string[];
+//   avatarUrl?: string;
+//   createdAt: Date;
+// } 
 
-const userSchema = new mongoose.Schema<UserDocument>({
+const userSchema = new Schema({
   email: {
     type: String,
     required: true,
@@ -44,4 +45,8 @@ const userSchema = new mongoose.Schema<UserDocument>({
   },
 });
 
+
+export type UserDocument = InferSchemaType<typeof userSchema> & {
+  _id:mongoose.Types.ObjectId
+}
 export const User = mongoose.model<UserDocument>("User", userSchema);
