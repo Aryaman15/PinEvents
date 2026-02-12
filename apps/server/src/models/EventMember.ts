@@ -18,4 +18,4 @@ export type EventMemberDocument = InferSchemaType<typeof eventMemberSchema> & {
   _id: mongoose.Types.ObjectId;
 };
 
-export const EventMember = mongoose.model("EventMember", eventMemberSchema);
+export const EventMember = mongoose.model<EventMemberDocument>("EventMember", eventMemberSchema);

@@ -1,4 +1,5 @@
 import mongoose, { Schema, type InferSchemaType } from "mongoose";
+import { GeoPoint } from "../types/location.types";
 
 const eventSchema = new Schema(
   {
@@ -15,7 +16,7 @@ const eventSchema = new Schema(
         required: true,
       },
       coordinates: {
-        type: [Number],
+        type: [Number] as unknown as [number, number],
         required: true,
         validate: {
           validator: (value: number[]) => value.length === 2,
@@ -28,13 +29,16 @@ const eventSchema = new Schema(
   },
   {
     timestamps: { createdAt: true, updatedAt: false },
-  }
+  },
 );
 
 eventSchema.index({ location: "2dsphere" });
 
-export type EventDocument = InferSchemaType<typeof eventSchema> & {
-  _id: mongoose.Types.ObjectId;
-};
+type BaseEvent = InferSchemaType<typeof eventSchema>;
 
-export const Event = mongoose.model("Event", eventSchema);
+// Override bad inference
+export type EventDocument = Omit<BaseEvent, "location"> & {
+  _id: mongoose.Types.ObjectId;
+  location: GeoPoint;
+};
+export const Event = mongoose.model<EventDocument>("Event", eventSchema);

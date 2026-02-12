@@ -18,4 +18,4 @@ export type EventMessageDocument = InferSchemaType<typeof eventMessageSchema> & 
   _id: mongoose.Types.ObjectId;
 };
 
-export const EventMessage = mongoose.model("EventMessage", eventMessageSchema);
+export const EventMessage = mongoose.model<EventMessageDocument>("EventMessage", eventMessageSchema);

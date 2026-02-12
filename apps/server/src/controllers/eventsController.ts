@@ -1,8 +1,5 @@
-import { Router } from "express";
-import rateLimit from "express-rate-limit";
-import jwt from "jsonwebtoken";
-import { requireAuth } from "../middleware/requireAuth";
-import { Event } from "../models/Event";
+import { RequestHandler } from "express";
+import { Event, EventDocument } from "../models/Event";
 import { EventMember } from "../models/EventMember";
 import { EventMessage } from "../models/EventMessage";
 import { JoinRequest } from "../models/JoinRequest";
@@ -14,70 +11,14 @@ import {
   joinRequestParamSchema,
   messagesQuerySchema,
 } from "../validation/events";
+import { getUserIdFromAuthHeader } from "../utils/jwt";
+import {
+  isAcceptedMember,
+  isAdminForEvent,
+} from "../services/eventMembership.service";
+import { blurLocation } from "../utils/geo";
 
-export const eventsRouter = Router();
-
-const joinLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const getUserIdFromAuthHeader = (authHeader?: string) => {
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return null;
-  }
-
-  const token = authHeader.replace("Bearer ", "");
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    return null;
-  }
-
-  try {
-    const payload = jwt.verify(token, secret) as { userId?: string };
-    return payload.userId ?? null;
-  } catch (error) {
-    return null;
-  }
-};
-
-const blurLocation = (coordinates: [number, number], radiusMeters = 250) => {
-  const [lng, lat] = coordinates;
-  const metersPerDegreeLat = 111_111;
-  const deltaLat = (Math.random() * 2 - 1) * (radiusMeters / metersPerDegreeLat);
-  const metersPerDegreeLng = metersPerDegreeLat * Math.cos((lat * Math.PI) / 180);
-  const deltaLng = (Math.random() * 2 - 1) * (radiusMeters / metersPerDegreeLng);
-
-  return [lng + deltaLng, lat + deltaLat] as [number, number];
-};
-
-const isAcceptedMemberForEvent = async (
-  eventId: string,
-  userId?: string,
-  acceptedMembers?: Array<string | { toString(): string }>
-) => {
-  if (!userId) {
-    return false;
-  }
-
-  const membership = await EventMember.findOne({
-    eventId,
-    userId,
-    status: "accepted",
-  }).lean();
-
-  if (membership) {
-    return true;
-  }
-
-  return Boolean(
-    acceptedMembers?.some((member) => member.toString() === userId)
-  );
-};
-
-eventsRouter.post("/", requireAuth, async (req, res) => {
+export const createEvent: RequestHandler = async (req, res) => {
   const userId = req.userId;
 
   if (!userId) {
@@ -93,7 +34,11 @@ eventsRouter.post("/", requireAuth, async (req, res) => {
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
 
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate <= startDate) {
+  if (
+    Number.isNaN(startDate.getTime()) ||
+    Number.isNaN(endDate.getTime()) ||
+    endDate <= startDate
+  ) {
     return res.status(400).json({ error: "Invalid event time range" });
   }
 
@@ -114,7 +59,7 @@ eventsRouter.post("/", requireAuth, async (req, res) => {
 
   return res.status(201).json({
     event: {
-      id: event.id,
+      id: event._id.toString(),
       title: event.title,
       description: event.description,
       category: event.category,
@@ -126,9 +71,9 @@ eventsRouter.post("/", requireAuth, async (req, res) => {
       createdAt: event.createdAt,
     },
   });
-});
+};
 
-eventsRouter.get("/near", async (req, res) => {
+export const getEventsNear: RequestHandler = async (req, res) => {
   const parseResult = eventsNearQuerySchema.safeParse(req.query);
   if (!parseResult.success) {
     return res.status(400).json({ error: "Invalid query" });
@@ -160,10 +105,12 @@ eventsRouter.get("/near", async (req, res) => {
     },
   })
     .limit(200)
-    .lean();
+    .lean<EventDocument[]>();
 
   const eventIds = events.map((event) => event._id.toString());
+
   const membershipByEventId = new Set<string>();
+
   if (userId && eventIds.length) {
     const memberships = await EventMember.find({
       eventId: { $in: eventIds },
@@ -180,11 +127,12 @@ eventsRouter.get("/near", async (req, res) => {
   const response = events.map((event) => {
     const isPrivate = event.type === "private";
     const isAcceptedFromMembers = membershipByEventId.has(event._id.toString());
-    const isAcceptedMember = Boolean(
+    const isAccepted = Boolean(
       isAcceptedFromMembers ||
-        (userId && event.acceptedMembers?.some((member) => member.toString() === userId))
+      (userId &&
+        event.acceptedMembers.some((member) => member.toString() === userId)),
     );
-    const shouldReveal = !isPrivate || isAcceptedMember;
+    const shouldReveal = !isPrivate || isAccepted;
     const base = {
       id: event._id.toString(),
       title: event.title,
@@ -208,15 +156,15 @@ eventsRouter.get("/near", async (req, res) => {
       ...base,
       redactedLocation: {
         type: "Point",
-        coordinates: blurLocation(event.location.coordinates as [number, number]),
+        coordinates: blurLocation(event.location.coordinates),
       },
     };
   });
 
   return res.status(200).json({ events: response });
-});
+};
 
-eventsRouter.get("/:id", async (req, res) => {
+export const getEventById: RequestHandler = async (req, res) => {
   const paramsResult = eventIdParamSchema.safeParse(req.params);
   if (!paramsResult.success) {
     return res.status(400).json({ error: "Invalid event id" });
@@ -225,7 +173,7 @@ eventsRouter.get("/:id", async (req, res) => {
   const authHeader = req.header("authorization");
   const userId = getUserIdFromAuthHeader(authHeader);
 
-  const event = await Event.findById(id).lean();
+  const event = await Event.findById(id).lean<EventDocument>();
   if (!event) {
     return res.status(404).json({ error: "Event not found" });
   }
@@ -246,10 +194,12 @@ eventsRouter.get("/:id", async (req, res) => {
     }).lean();
   }
 
-  const isAcceptedMember = Boolean(
-    membership || (userId && event.acceptedMembers?.some((member) => member.toString() === userId))
+  const isAccepted = Boolean(
+    membership ||
+    (userId &&
+      event.acceptedMembers.some((member) => member.toString() === userId)),
   );
-  const shouldReveal = !isPrivate || isAcceptedMember;
+  const shouldReveal = !isPrivate || isAccepted;
 
   return res.status(200).json({
     event: {
@@ -267,20 +217,20 @@ eventsRouter.get("/:id", async (req, res) => {
         : {
             redactedLocation: {
               type: "Point",
-              coordinates: blurLocation(event.location.coordinates as [number, number]),
+              coordinates: blurLocation(event.location.coordinates),
             },
           }),
       viewer: {
-        isMember: Boolean(isAcceptedMember),
+        isMember: Boolean(isAccepted),
         role: membership?.role ?? null,
         status: membership?.status ?? null,
         joinRequestStatus: joinRequest?.status ?? null,
       },
     },
   });
-});
+};
 
-eventsRouter.post("/:id/request-join", requireAuth, joinLimiter, async (req, res) => {
+export const requestJoin: RequestHandler = async (req, res) => {
   const paramsResult = eventIdParamSchema.safeParse(req.params);
   if (!paramsResult.success) {
     return res.status(400).json({ error: "Invalid event id" });
@@ -292,13 +242,15 @@ eventsRouter.post("/:id/request-join", requireAuth, joinLimiter, async (req, res
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const event = await Event.findById(id);
+  const event = await Event.findById(id).lean<EventDocument>();
   if (!event) {
     return res.status(404).json({ error: "Event not found" });
   }
 
   if (event.type !== "private") {
-    return res.status(400).json({ error: "Join requests are only needed for private events" });
+    return res
+      .status(400)
+      .json({ error: "Join requests are only needed for private events" });
   }
 
   const existingMembership = await EventMember.findOne({
@@ -335,24 +287,9 @@ eventsRouter.post("/:id/request-join", requireAuth, joinLimiter, async (req, res
   });
 
   return res.status(201).json({ joinRequest });
-});
-
-const requireAdminForEvent = async (eventId: string, userId?: string) => {
-  if (!userId) {
-    return false;
-  }
-
-  const membership = await EventMember.findOne({
-    eventId,
-    userId,
-    role: "admin",
-    status: "accepted",
-  }).lean();
-
-  return Boolean(membership);
 };
 
-eventsRouter.get("/:id/requests", requireAuth, async (req, res) => {
+export const listJoinRequests: RequestHandler = async (req, res) => {
   const paramsResult = eventIdParamSchema.safeParse(req.params);
   if (!paramsResult.success) {
     return res.status(400).json({ error: "Invalid event id" });
@@ -360,12 +297,12 @@ eventsRouter.get("/:id/requests", requireAuth, async (req, res) => {
   const { id } = paramsResult.data;
   const userId = req.userId;
 
-  const event = await Event.findById(id).lean();
+  const event = await Event.findById(id).lean<EventDocument>();
   if (!event) {
     return res.status(404).json({ error: "Event not found" });
   }
 
-  const isAdmin = await requireAdminForEvent(id, userId);
+  const isAdmin = await isAdminForEvent(id, userId);
   if (!isAdmin) {
     return res.status(403).json({ error: "Forbidden" });
   }
@@ -383,52 +320,51 @@ eventsRouter.get("/:id/requests", requireAuth, async (req, res) => {
       createdAt: request.createdAt,
     })),
   });
-});
-
-eventsRouter.post("/:id/requests/:requestId/approve", requireAuth, joinLimiter, async (req, res) => {
+};
+export const handleJoinRequest: RequestHandler = async (req, res) => {
   const paramsResult = joinRequestParamSchema.safeParse(req.params);
   if (!paramsResult.success) {
     return res.status(400).json({ error: "Invalid request" });
   }
+
   const { id, requestId } = paramsResult.data;
   const userId = req.userId;
+  const { status } = req.body;
 
-  const event = await Event.findById(id);
+  if (!["approved", "rejected"].includes(status)) {
+    return res.status(400).json({ error: "Invalid status" });
+  }
+
+  const event = await Event.findById(id).lean<EventDocument>();
   if (!event) {
     return res.status(404).json({ error: "Event not found" });
   }
 
-  const isAdmin = await requireAdminForEvent(id, userId);
+  const isAdmin = await isAdminForEvent(id, userId);
   if (!isAdmin) {
     return res.status(403).json({ error: "Forbidden" });
   }
 
-  const joinRequest = await JoinRequest.findOne({ _id: requestId, eventId: event._id });
+  const joinRequest = await JoinRequest.findOne({
+    _id: requestId,
+    eventId: event._id,
+  });
+
   if (!joinRequest) {
     return res.status(404).json({ error: "Request not found" });
   }
 
-  joinRequest.status = "approved";
+  // Update status
+  joinRequest.status = status;
   await joinRequest.save();
 
-  await EventMember.findOneAndUpdate(
-    { eventId: event._id, userId: joinRequest.userId },
-    { eventId: event._id, userId: joinRequest.userId, role: "member", status: "accepted" },
-    { upsert: true }
-  );
-
-  await Event.updateOne(
-    { _id: event._id },
-    { $addToSet: { acceptedMembers: joinRequest.userId } }
-  );
-
-  console.info("join_request_approved", {
-    eventId: event._id.toString(),
-    requestId: joinRequest._id.toString(),
-    approvedBy: userId,
-    userId: joinRequest.userId.toString(),
-    timestamp: new Date().toISOString(),
-  });
+  // If approved → add to event
+  if (status === "approved") {
+    await Event.updateOne(
+      { _id: event._id },
+      { $addToSet: { acceptedMembers: joinRequest.userId } },
+    );
+  }
 
   return res.status(200).json({
     request: {
@@ -436,43 +372,107 @@ eventsRouter.post("/:id/requests/:requestId/approve", requireAuth, joinLimiter, 
       status: joinRequest.status,
     },
   });
-});
+};
 
-eventsRouter.post("/:id/requests/:requestId/reject", requireAuth, joinLimiter, async (req, res) => {
-  const paramsResult = joinRequestParamSchema.safeParse(req.params);
-  if (!paramsResult.success) {
-    return res.status(400).json({ error: "Invalid request" });
-  }
-  const { id, requestId } = paramsResult.data;
-  const userId = req.userId;
+// export const approveJoinRequest: RequestHandler = async (req, res) => {
+//   const paramsResult = joinRequestParamSchema.safeParse(req.params);
+//   if (!paramsResult.success) {
+//     return res.status(400).json({ error: "Invalid request" });
+//   }
+//   const { id, requestId } = paramsResult.data;
+//   const userId = req.userId;
 
-  const event = await Event.findById(id);
-  if (!event) {
-    return res.status(404).json({ error: "Event not found" });
-  }
+//   const event = await Event.findById(id).lean<EventDocument>();
+//   if (!event) {
+//     return res.status(404).json({ error: "Event not found" });
+//   }
 
-  const isAdmin = await requireAdminForEvent(id, userId);
-  if (!isAdmin) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
+//   const isAdmin = await isAdminForEvent(id, userId);
+//   if (!isAdmin) {
+//     return res.status(403).json({ error: "Forbidden" });
+//   }
 
-  const joinRequest = await JoinRequest.findOne({ _id: requestId, eventId: event._id });
-  if (!joinRequest) {
-    return res.status(404).json({ error: "Request not found" });
-  }
+//   const joinRequest = await JoinRequest.findOne({
+//     _id: requestId,
+//     eventId: event._id,
+//   });
+//   if (!joinRequest) {
+//     return res.status(404).json({ error: "Request not found" });
+//   }
 
-  joinRequest.status = "rejected";
-  await joinRequest.save();
+//   joinRequest.status = "approved";
+//   await joinRequest.save();
 
-  return res.status(200).json({
-    request: {
-      id: joinRequest._id.toString(),
-      status: joinRequest.status,
-    },
-  });
-});
+//   await EventMember.findOneAndUpdate(
+//     { eventId: event._id, userId: joinRequest.userId },
+//     {
+//       eventId: event._id,
+//       userId: joinRequest.userId,
+//       role: "member",
+//       status: "accepted",
+//     },
+//     { upsert: true },
+//   );
 
-eventsRouter.get("/:id/messages", requireAuth, async (req, res) => {
+//   await Event.updateOne(
+//     { _id: event._id },
+//     { $addToSet: { acceptedMembers: joinRequest.userId } },
+//   );
+
+//   console.info("join_request_approved", {
+//     eventId: event._id.toString(),
+//     requestId: joinRequest._id.toString(),
+//     approvedBy: userId,
+//     userId: joinRequest.userId.toString(),
+//     timestamp: new Date().toISOString(),
+//   });
+
+//   return res.status(200).json({
+//     request: {
+//       id: joinRequest._id.toString(),
+//       status: joinRequest.status,
+//     },
+//   });
+// };
+
+// export const rejectJoinRequest: RequestHandler = async (req, res) => {
+//   const paramsResult = joinRequestParamSchema.safeParse(req.params);
+//   if (!paramsResult.success) {
+//     return res.status(400).json({ error: "Invalid request" });
+//   }
+//   const { id, requestId } = paramsResult.data;
+//   const userId = req.userId;
+
+//   const event = await Event.findById(id).lean<EventDocument>();
+//   if (!event) {
+//     return res.status(404).json({ error: "Event not found" });
+//   }
+
+//   const isAdmin = await isAdminForEvent(id, userId);
+//   if (!isAdmin) {
+//     return res.status(403).json({ error: "Forbidden" });
+//   }
+
+//   const joinRequest = await JoinRequest.findOne({
+//     _id: requestId,
+//     eventId: event._id,
+//   });
+//   if (!joinRequest) {
+//     return res.status(404).json({ error: "Request not found" });
+//   }
+
+//   joinRequest.status = "rejected";
+//   await joinRequest.save();
+
+//   return res.status(200).json({
+//     request: {
+//       id: joinRequest._id.toString(),
+//       status: joinRequest.status,
+//     },
+//   });
+// };
+
+export const listMessages: RequestHandler = async (req, res) => {
   const paramsResult = eventIdParamSchema.safeParse(req.params);
   if (!paramsResult.success) {
     return res.status(400).json({ error: "Invalid event id" });
@@ -483,19 +483,21 @@ eventsRouter.get("/:id/messages", requireAuth, async (req, res) => {
   }
   const { id } = paramsResult.data;
   const userId = req.userId;
-  const limitParam = queryResult.data.limit ? Number(queryResult.data.limit) : NaN;
+  const limitParam = queryResult.data.limit
+    ? Number(queryResult.data.limit)
+    : NaN;
   const limit = Number.isNaN(limitParam) ? 50 : Math.min(limitParam, 200);
 
   if (!userId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const event = await Event.findById(id).lean();
+  const event = await Event.findById(id).lean<EventDocument>();
   if (!event) {
     return res.status(404).json({ error: "Event not found" });
   }
 
-  const isAccepted = await isAcceptedMemberForEvent(id, userId, event.acceptedMembers);
+  const isAccepted = await isAcceptedMember(id, userId, event.acceptedMembers);
   if (!isAccepted) {
     return res.status(403).json({ error: "Forbidden" });
   }
@@ -505,11 +507,15 @@ eventsRouter.get("/:id/messages", requireAuth, async (req, res) => {
     .limit(limit)
     .lean();
 
-  const userIds = Array.from(new Set(messages.map((message) => message.userId.toString())));
+  const userIds = Array.from(
+    new Set(messages.map((message) => message.userId.toString())),
+  );
   const users = await User.find({ _id: { $in: userIds } })
     .select("displayName")
     .lean();
-  const displayNameById = new Map(users.map((user) => [user._id.toString(), user.displayName ?? ""]));
+  const displayNameById = new Map(
+    users.map((user) => [user._id.toString(), user.displayName ?? ""]),
+  );
 
   return res.status(200).json({
     messages: messages
@@ -522,4 +528,4 @@ eventsRouter.get("/:id/messages", requireAuth, async (req, res) => {
       }))
       .reverse(),
   });
-});
+};

@@ -22,4 +22,4 @@ export type JoinRequestDocument = InferSchemaType<typeof joinRequestSchema> & {
   _id: mongoose.Types.ObjectId;
 };
 
-export const JoinRequest = mongoose.model("JoinRequest", joinRequestSchema);
+export const JoinRequest = mongoose.model<JoinRequestDocument>("JoinRequest", joinRequestSchema);
