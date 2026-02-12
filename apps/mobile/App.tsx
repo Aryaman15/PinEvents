@@ -1,22 +1,34 @@
-import { StatusBar } from "expo-status-bar";
 import MapLibreGL from "@maplibre/maplibre-react-native";
 import * as SecureStore from "expo-secure-store";
 import * as Location from "expo-location";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  BackHandler,
-  Pressable,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  TextInput,
-  SafeAreaView,
-  View,
-} from "react-native";
+import { ActivityIndicator, BackHandler, Share, View } from "react-native";
 import { io, Socket } from "socket.io-client";
 import type { FeatureCollection, Point, Feature } from "geojson";
+import { AuthScreen } from "./src/components/AuthScreen";
+import { ProfileEditorScreen } from "./src/components/ProfileEditorScreen";
+import { ProfileScreen } from "./src/components/ProfileScreen";
+import { CreateEventScreen } from "./src/components/CreateEventScreen";
+import { ChatScreen } from "./src/components/ChatScreen";
+import { EventBottomSheet } from "./src/components/EventBottomSheet";
+import { MapScreen } from "./src/components/MapScreen";
+import { initialCenter, tokenKey } from "./src/constants";
+import { styles } from "./src/styles";
+import {
+  formatDateTime,
+  setDatePart,
+  setTimePart,
+} from "./src/utils/dateTime";
+import type {
+  AuthMode,
+  EventDetail,
+  EventDraft,
+  EventMessage,
+  EventPin,
+  JoinRequest,
+  Profile,
+  ViewerInfo,
+} from "./src/types";
 
 // MapLibreGL.setAccessToken('');
 
@@ -30,76 +42,6 @@ if (!apiUrl) {
 if (!mapStyleUrl) {
   throw new Error("Missing EXPO_PUBLIC_MAP_STYLE_URL_2 in .env");
 }
-
-const initialCenter: [number, number] = [-122.4194, 37.7749];
-const tokenKey = "authToken";
-
-const markerColorExpression = [
-  "case",
-  ["get", "isPrivate"],
-  "#7c3aed", // premium purple
-  "#2563eb", // modern blue
-] as const;
-
-type AuthMode = "login" | "signup";
-type EventPrivacy = "public" | "private";
-
-type Profile = {
-  id: string;
-  displayName: string;
-  bio: string;
-  interests: string[];
-  avatarUrl: string;
-};
-
-type EventPin = {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-  type: EventPrivacy;
-  startTime: string;
-  endTime: string;
-  createdAt: string;
-  location?: { type: "Point"; coordinates: [number, number] };
-  redactedLocation?: { type: "Point"; coordinates: [number, number] };
-};
-
-type ViewerInfo = {
-  isMember: boolean;
-  role: "admin" | "member" | null;
-  status: "accepted" | null;
-  joinRequestStatus: "pending" | "approved" | "rejected" | null;
-};
-
-type EventDetail = EventPin & {
-  viewer?: ViewerInfo;
-};
-
-type JoinRequest = {
-  id: string;
-  userId: string;
-  status: "pending" | "approved" | "rejected";
-  createdAt: string;
-};
-
-type EventMessage = {
-  id: string;
-  eventId: string;
-  text: string;
-  createdAt: string;
-  displayName: string;
-  isMine?: boolean;
-};
-
-type EventDraft = {
-  title: string;
-  description: string;
-  category: string;
-  type: EventPrivacy;
-  startTime: string;
-  endTime: string;
-};
 
 const emptyProfile: Profile = {
   id: "",
@@ -172,29 +114,6 @@ export default function App() {
     );
   }, [events, customCategories]);
 
-  // const eventFeatures = useMemo(() => {
-  //   return {
-  //     type: "FeatureCollection",
-  //     features: events.map((event) => {
-  //       const coordinates =
-  //         event.location?.coordinates ??
-  //         event.redactedLocation?.coordinates ??
-  //         initialCenter;
-  //       return {
-  //         type: "Feature",
-  //         id: event.id,
-  //         properties: {
-  //           id: event.id,
-  //           isPrivate: event.type === "private",
-  //         },
-  //         geometry: {
-  //           type: "Point",
-  //           coordinates,
-  //         },
-  //       };
-  //     }),
-  //   } as const;
-  // }, [events]);
   const eventFeatures = useMemo<FeatureCollection<Point>>(() => {
     return {
       type: "FeatureCollection",
@@ -258,7 +177,6 @@ export default function App() {
     };
 
     loadLocation().catch(() => {
-      // Keep default center if location fails.
       setIsLocationUnavailable(true);
     });
   }, [authToken]);
@@ -283,17 +201,8 @@ export default function App() {
     }
 
     const loadEventDetail = async () => {
-      //  {
-      //  if (!apiUrl) setErrorMessage("EXPO_PUBLIC_API_URL is not set.");
-      //   return;
-      // }
-
       setIsLoadingEventDetail(true);
       try {
-        // if (!apiUrl) {
-        //   throw new Error("EXPO_PUBLIC_API_URL missing");
-        // }
-
         const response = await fetch(`${apiUrl}/events/${selectedEventId}`, {
           headers: {
             Authorization: `Bearer ${authToken}`,
@@ -333,10 +242,6 @@ export default function App() {
     });
   }, [selectedEventDetail?.id, selectedEventDetail?.viewer?.role]);
 
-  // useEffect(() => {
-  //   if (!showChatScreen || !authToken || !chatEventId || !apiUrl) {
-  //     return;
-  //   }
   useEffect(() => {
     if (!showChatScreen || !authToken || !chatEventId || !apiUrl) return;
 
@@ -368,11 +273,6 @@ export default function App() {
   }, [showChatScreen, authToken, chatEventId]);
 
   const loadProfile = async (token: string) => {
-    // if (!apiUrl) {
-    //   setErrorMessage("EXPO_PUBLIC_API_URL is not set.");
-    //   return;
-    // }
-
     try {
       const response = await fetch(`${apiUrl}/me`, {
         headers: {
@@ -415,10 +315,6 @@ export default function App() {
 
   const handleAuth = async () => {
     setErrorMessage("");
-    // if (!apiUrl) {
-    //   setErrorMessage("EXPO_PUBLIC_API_URL is not set.");
-    //   return;
-    // }
 
     try {
       const response = await fetch(`${apiUrl}/auth/${authMode}`, {
@@ -498,11 +394,6 @@ export default function App() {
     query = "",
     category = "",
   ) => {
-    // if (!apiUrl) {
-    //   setErrorMessage("EXPO_PUBLIC_API_URL is not set.");
-    //   return;
-    // }
-
     setIsLoadingEvents(true);
     try {
       const params = new URLSearchParams({
@@ -544,10 +435,7 @@ export default function App() {
     if (!authToken) {
       return;
     }
-    // if (!apiUrl) {
-    //   setErrorMessage("EXPO_PUBLIC_API_URL is not set.");
-    //   return;
-    // }
+
     if (!eventDraft.title.trim()) {
       setErrorMessage("Title is required");
       return;
@@ -649,10 +537,6 @@ export default function App() {
     if (!authToken) {
       return;
     }
-    // if (!apiUrl) {
-    //   setErrorMessage("EXPO_PUBLIC_API_URL is not set.");
-    //   return;
-    // }
 
     try {
       const response = await fetch(`${apiUrl}/events/${eventId}/messages`, {
@@ -695,51 +579,6 @@ export default function App() {
     setChatDraft("");
   };
 
-  //   const handleRequestJoin = async () => {
-  //     if (!authToken || !selectedEventDetail) {
-  //       return;
-  //     }
-  //     // if (!apiUrl) {
-  //     //   setErrorMessage("EXPO_PUBLIC_API_URL is not set.");
-  //     //   return;
-  //     // }
-
-  //     setIsSubmittingJoinRequest(true);
-  //     try {
-  //       const response = await fetch(
-  //         `${apiUrl}/events/${selectedEventDetail.id}/request-join`,
-  //         {
-  //           method: "POST",
-  //           headers: {
-  //             "Content-Type": "application/json",
-  //             Authorization: `Bearer ${authToken}`,
-  //           },
-  //         },
-  //       );
-
-  //       if (!response.ok) {
-  //         setErrorMessage("Unable to request access.");
-  //         return;
-  //       }
-
-  //       const data = (await response.json()) as {
-  //         joinRequest?: { status?: string };
-  //       };
-  //      setSelectedEventDetail((prev) => {
-  //   if (!prev) return prev;
-
-  //   return {
-  //     ...prev,
-  //     viewer: {
-  //       isMember: prev.viewer?.isMember ?? false,
-  //       role: prev.viewer?.role ?? null,
-  //       status: prev.viewer?.status ?? null,
-  //       joinRequestStatus:
-  //         (data.joinRequest?.status as ViewerInfo["joinRequestStatus"]) ??
-  //         "pending",
-  //     },
-  //   };
-  // });
   const handleRequestJoin = async () => {
     if (!authToken || !selectedEventDetail) {
       return;
@@ -794,10 +633,6 @@ export default function App() {
     if (!authToken) {
       return;
     }
-    // if (!apiUrl) {
-    //   setErrorMessage("EXPO_PUBLIC_API_URL is not set.");
-    //   return;
-    // }
 
     setIsLoadingRequests(true);
     try {
@@ -827,10 +662,6 @@ export default function App() {
     if (!authToken || !selectedEventDetail) {
       return;
     }
-    // if (!apiUrl) {
-    //   setErrorMessage("EXPO_PUBLIC_API_URL is not set.");
-    //   return;
-    // }
 
     try {
       const response = await fetch(
@@ -912,120 +743,6 @@ export default function App() {
     setSelectedEventId(eventId);
   };
 
-  // const formatDateTime = (value: string) => {
-  //   const parsed = new Date(value);
-  //   if (Number.isNaN(parsed.getTime())) {
-  //     return "Invalid date";
-  //   }
-  //   return parsed.toLocaleString();
-  // };
-  const formatDateTime = (value: string) => {
-    const parsed = new Date(value);
-
-    if (Number.isNaN(parsed.getTime())) {
-      return "Invalid date";
-    }
-
-    return parsed.toLocaleString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true, // AM/PM
-    });
-  };
-
-  // const getDatePart = (value: string) => {
-  //   const parsed = new Date(value);
-  //   if (Number.isNaN(parsed.getTime())) {
-  //     return "";
-  //   }
-  //   return parsed.toISOString().slice(0, 10);
-  // };
-  const getDatePart = (value: string) => {
-    const parsed = new Date(value);
-
-    if (Number.isNaN(parsed.getTime())) {
-      return "";
-    }
-
-    const year = parsed.getFullYear();
-    const month = String(parsed.getMonth() + 1).padStart(2, "0");
-    const day = String(parsed.getDate()).padStart(2, "0");
-
-    return `${year}-${month}-${day}`;
-  };
-
-  const getTimePart = (value: string) => {
-    const parsed = new Date(value);
-
-    if (Number.isNaN(parsed.getTime())) {
-      return "";
-    }
-
-    const hours = String(parsed.getHours()).padStart(2, "0");
-    const minutes = String(parsed.getMinutes()).padStart(2, "0");
-
-    return `${hours}:${minutes}`;
-  };
-
-  // const setDatePart = (value: string, nextDate: string) => {
-  //   const parsed = new Date(value);
-  //   if (Number.isNaN(parsed.getTime())) {
-  //     return value;
-  //   }
-  //   const [year, month, day] = nextDate.split("-").map(Number);
-  //   if (!year || !month || !day) {
-  //     return value;
-  //   }
-  //   parsed.setUTCFullYear(year, month - 1, day);
-  //   return parsed.toISOString();
-  // };
-  const setDatePart = (value: string, nextDate: string) => {
-    const parsed = new Date(value);
-
-    if (Number.isNaN(parsed.getTime())) return value;
-
-    const [year, month, day] = nextDate.split("-").map(Number);
-
-    if (!year || !month || !day) return value;
-
-    parsed.setFullYear(year, month - 1, day);
-
-    return parsed.toISOString();
-  };
-
-  // const setTimePart = (value: string, nextTime: string) => {
-  //   const parsed = new Date(value);
-  //   if (Number.isNaN(parsed.getTime())) {
-  //     return value;
-  //   }
-  //   const [hours, minutes] = nextTime.split(":").map(Number);
-  //   if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-  //     return value;
-  //   }
-  //   parsed.setUTCHours(hours, minutes, 0, 0);
-  //   return parsed.toISOString();
-  // };
-  const setTimePart = (value: string, nextTime: string) => {
-    const parsed = new Date(value);
-
-    if (Number.isNaN(parsed.getTime())) {
-      return value;
-    }
-
-    const [hours, minutes] = nextTime.split(":").map(Number);
-
-    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-      return value;
-    }
-
-    parsed.setHours(hours, minutes, 0, 0);
-
-    return parsed.toISOString();
-  };
-
   const handleShareEvent = async (eventToShare: EventPin | EventDetail) => {
     const message = [
       eventToShare.title,
@@ -1053,477 +770,126 @@ export default function App() {
 
   if (!authToken) {
     return (
-      <View style={styles.authContainer}>
-        <Text style={styles.title}>
-          {authMode === "login" ? "Welcome Back" : "Create Account"}
-        </Text>
-        <Text style={styles.subtitle}>
-          {authMode === "login"
-            ? "Log in to continue."
-            : "Sign up to access the map."}
-        </Text>
-        <TextInput
-          autoCapitalize="none"
-          keyboardType="email-address"
-          placeholder="Email"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          value={email}
-          onChangeText={setEmail}
-        />
-        <TextInput
-          placeholder="Password (min 8 chars)"
-          placeholderTextColor="#9ca3af"
-          style={styles.input}
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
-        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-        <Pressable style={styles.primaryButton} onPress={handleAuth}>
-          <Text style={styles.primaryButtonText}>
-            {authMode === "login" ? "Log In" : "Sign Up"}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={styles.linkButton}
-          onPress={() => setAuthMode(authMode === "login" ? "signup" : "login")}
-        >
-          <Text style={styles.linkText}>
-            {authMode === "login"
-              ? "Need an account? Sign up."
-              : "Have an account? Log in."}
-          </Text>
-        </Pressable>
-        <StatusBar style="dark" />
-      </View>
+      <AuthScreen
+        authMode={authMode}
+        email={email}
+        password={password}
+        errorMessage={errorMessage}
+        onChangeEmail={setEmail}
+        onChangePassword={setPassword}
+        onSubmit={handleAuth}
+        onToggleMode={() =>
+          setAuthMode(authMode === "login" ? "signup" : "login")
+        }
+      />
     );
   }
 
   if (needsProfileSetup || showProfileEditor) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView
-          contentContainerStyle={[
-            styles.profileContainer,
-            styles.safeAreaContent,
-          ]}
-        >
-          <Text style={styles.title}>
-            {needsProfileSetup ? "Finish your profile" : "Edit profile"}
-          </Text>
-          <Text style={styles.subtitle}>
-            Add a display name and interests to continue.
-          </Text>
-          <TextInput
-            placeholder="Display name"
-            placeholderTextColor="#9ca3af"
-            style={styles.input}
-            value={profileDraft.displayName}
-            onChangeText={(value) =>
-              setProfileDraft((prev) => ({ ...prev, displayName: value }))
-            }
-          />
-          <TextInput
-            placeholder="Bio"
-            placeholderTextColor="#9ca3af"
-            style={[styles.input, styles.textArea]}
-            value={profileDraft.bio}
-            onChangeText={(value) =>
-              setProfileDraft((prev) => ({ ...prev, bio: value }))
-            }
-            multiline
-          />
-          <TextInput
-            placeholder="Avatar URL (optional)"
-            placeholderTextColor="#9ca3af"
-            style={styles.input}
-            value={profileDraft.avatarUrl}
-            onChangeText={(value) =>
-              setProfileDraft((prev) => ({ ...prev, avatarUrl: value }))
-            }
-          />
-          <View style={styles.interestRow}>
-            <TextInput
-              placeholder="Add interest"
-              placeholderTextColor="#9ca3af"
-              style={[styles.input, styles.interestInput]}
-              value={interestInput}
-              onChangeText={setInterestInput}
-            />
-            <Pressable
-              style={styles.secondaryButton}
-              onPress={handleAddInterest}
-            >
-              <Text style={styles.secondaryButtonText}>Add</Text>
-            </Pressable>
-          </View>
-          <View style={styles.tagWrap}>
-            {profileDraft.interests.map((item) => (
-              <Pressable
-                key={item}
-                style={styles.tag}
-                onPress={() => handleRemoveInterest(item)}
-              >
-                <Text style={styles.tagText}>{item} ✕</Text>
-              </Pressable>
-            ))}
-          </View>
-          {errorMessage ? (
-            <Text style={styles.error}>{errorMessage}</Text>
-          ) : null}
-          <Pressable style={styles.primaryButton} onPress={handleSaveProfile}>
-            <Text style={styles.primaryButtonText}>Save profile</Text>
-          </Pressable>
-          {!needsProfileSetup ? (
-            <Pressable
-              style={styles.linkButton}
-              onPress={() => setShowProfileEditor(false)}
-            >
-              <Text style={styles.linkText}>Back to profile</Text>
-            </Pressable>
-          ) : null}
-          <StatusBar style="dark" />
-        </ScrollView>
-      </SafeAreaView>
+      <ProfileEditorScreen
+        needsProfileSetup={needsProfileSetup}
+        profileDraft={profileDraft}
+        interestInput={interestInput}
+        errorMessage={errorMessage}
+        onChangeDisplayName={(value) =>
+          setProfileDraft((prev) => ({ ...prev, displayName: value }))
+        }
+        onChangeBio={(value) =>
+          setProfileDraft((prev) => ({ ...prev, bio: value }))
+        }
+        onChangeAvatarUrl={(value) =>
+          setProfileDraft((prev) => ({ ...prev, avatarUrl: value }))
+        }
+        onChangeInterestInput={setInterestInput}
+        onAddInterest={handleAddInterest}
+        onRemoveInterest={handleRemoveInterest}
+        onSaveProfile={handleSaveProfile}
+        onBack={() => setShowProfileEditor(false)}
+      />
     );
   }
 
   if (profile && showProfileScreen && !showProfileEditor) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView
-          contentContainerStyle={[
-            styles.profileContainer,
-            styles.safeAreaContent,
-          ]}
-        >
-          <Text style={styles.title}>Your profile</Text>
-          <Text style={styles.profileValue}>
-            {profile.displayName || "No display name set"}
-          </Text>
-          {profile.bio ? (
-            <Text style={styles.profileBio}>{profile.bio}</Text>
-          ) : null}
-          <Text style={styles.sectionTitle}>Interests</Text>
-          <View style={styles.tagWrap}>
-            {profile.interests.length ? (
-              profile.interests.map((interest) => (
-                <View key={interest} style={styles.tag}>
-                  <Text style={styles.tagText}>{interest}</Text>
-                </View>
-              ))
-            ) : (
-              <Text style={styles.mutedText}>No interests added yet.</Text>
-            )}
-          </View>
-          <Pressable
-            style={styles.primaryButton}
-            onPress={() => setShowProfileEditor(true)}
-          >
-            <Text style={styles.primaryButtonText}>Edit profile</Text>
-          </Pressable>
-          <Pressable style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutButtonText}>Log out</Text>
-          </Pressable>
-          <Pressable
-            style={styles.linkButton}
-            onPress={() => setShowProfileScreen(false)}
-          >
-            <Text style={styles.linkText}>Back to map</Text>
-          </Pressable>
-          <StatusBar style="dark" />
-        </ScrollView>
-      </SafeAreaView>
+      <ProfileScreen
+        profile={profile}
+        onEditProfile={() => setShowProfileEditor(true)}
+        onLogout={handleLogout}
+        onBack={() => setShowProfileScreen(false)}
+      />
     );
   }
 
   if (showCreateEvent) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView
-          contentContainerStyle={[
-            styles.profileContainer,
-            styles.safeAreaContent,
-          ]}
-        >
-          <Text style={styles.title}>Create event</Text>
-          <Text style={styles.subtitle}>
-            Share what is happening around you.
-          </Text>
-          <TextInput
-            placeholder="Title"
-            placeholderTextColor="#9ca3af"
-            style={styles.input}
-            value={eventDraft.title}
-            onChangeText={(value) =>
-              setEventDraft((prev) => ({ ...prev, title: value }))
-            }
-          />
-          <TextInput
-            placeholder="Description"
-            placeholderTextColor="#9ca3af"
-            style={[styles.input, styles.textArea]}
-            value={eventDraft.description}
-            onChangeText={(value) =>
-              setEventDraft((prev) => ({ ...prev, description: value }))
-            }
-            multiline
-          />
-          <Text style={styles.sectionTitle}>Category</Text>
-          <View style={styles.categoryRow}>
-            <Pressable
-              style={styles.categoryButton}
-              onPress={() => setShowCreateCategoryMenu((prev) => !prev)}
-            >
-              <Text style={styles.categoryButtonText}>
-                {eventDraft.category || "Select category"}
-              </Text>
-            </Pressable>
-            <TextInput
-              placeholder="Or add new"
-              placeholderTextColor="#9ca3af"
-              style={[styles.input, styles.categoryInput]}
-              value={newCategoryInput}
-              onChangeText={setNewCategoryInput}
-            />
-          </View>
-          {showCreateCategoryMenu ? (
-            <View style={styles.categoryMenu}>
-              <ScrollView>
-                {availableCategories.length ? (
-                  availableCategories.map((category) => (
-                    <Pressable
-                      key={category}
-                      style={styles.categoryOption}
-                      onPress={() => {
-                        setEventDraft((prev) => ({ ...prev, category }));
-                        setNewCategoryInput("");
-                        setShowCreateCategoryMenu(false);
-                      }}
-                    >
-                      <Text style={styles.categoryOptionText}>{category}</Text>
-                    </Pressable>
-                  ))
-                ) : (
-                  <Text style={styles.bottomSheetMeta}>No categories yet.</Text>
-                )}
-              </ScrollView>
-            </View>
-          ) : null}
-          <View style={styles.privacyRow}>
-            <Pressable
-              style={[
-                styles.privacyToggle,
-                eventDraft.type === "public" && styles.privacyToggleActive,
-              ]}
-              onPress={() =>
-                setEventDraft((prev) => ({ ...prev, type: "public" }))
-              }
-            >
-              <Text
-                style={[
-                  styles.privacyToggleText,
-                  eventDraft.type === "public" &&
-                    styles.privacyToggleTextActive,
-                ]}
-              >
-                Public
-              </Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.privacyToggle,
-                eventDraft.type === "private" && styles.privacyToggleActive,
-              ]}
-              onPress={() =>
-                setEventDraft((prev) => ({ ...prev, type: "private" }))
-              }
-            >
-              <Text
-                style={[
-                  styles.privacyToggleText,
-                  eventDraft.type === "private" &&
-                    styles.privacyToggleTextActive,
-                ]}
-              >
-                Private
-              </Text>
-            </Pressable>
-          </View>
-          <Text style={styles.sectionTitle}>Event timing</Text>
-          <View style={styles.timingCard}>
-            <Text style={styles.timingLabel}>Start</Text>
-            <View style={styles.timingRow}>
-              <View style={styles.timingField}>
-                <Text style={styles.timingFieldLabel}>Date</Text>
-                <TextInput
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#9ca3af"
-                  style={[styles.input, styles.timingInput]}
-                  value={getDatePart(eventDraft.startTime)}
-                  onChangeText={(value) =>
-                    setEventDraft((prev) => ({
-                      ...prev,
-                      startTime: setDatePart(prev.startTime, value),
-                    }))
-                  }
-                />
-              </View>
-              <View style={styles.timingField}>
-                <Text style={styles.timingFieldLabel}>Time</Text>
-                <TextInput
-                  placeholder="HH:MM"
-                  placeholderTextColor="#9ca3af"
-                  style={[styles.input, styles.timingInput]}
-                  value={getTimePart(eventDraft.startTime)}
-                  onChangeText={(value) =>
-                    setEventDraft((prev) => ({
-                      ...prev,
-                      startTime: setTimePart(prev.startTime, value),
-                    }))
-                  }
-                />
-              </View>
-            </View>
-            <Text style={styles.timingMeta}>
-              Current: {formatDateTime(eventDraft.startTime)}
-            </Text>
-          </View>
-          <View style={styles.timingCard}>
-            <Text style={styles.timingLabel}>End</Text>
-            <View style={styles.timingRow}>
-              <View style={styles.timingField}>
-                <Text style={styles.timingFieldLabel}>Date</Text>
-                <TextInput
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#9ca3af"
-                  style={[styles.input, styles.timingInput]}
-                  value={getDatePart(eventDraft.endTime)}
-                  onChangeText={(value) =>
-                    setEventDraft((prev) => ({
-                      ...prev,
-                      endTime: setDatePart(prev.endTime, value),
-                    }))
-                  }
-                />
-              </View>
-              <View style={styles.timingField}>
-                <Text style={styles.timingFieldLabel}>Time</Text>
-                <TextInput
-                  placeholder="HH:MM"
-                  placeholderTextColor="#9ca3af"
-                  style={[styles.input, styles.timingInput]}
-                  value={getTimePart(eventDraft.endTime)}
-                  onChangeText={(value) =>
-                    setEventDraft((prev) => ({
-                      ...prev,
-                      endTime: setTimePart(prev.endTime, value),
-                    }))
-                  }
-                />
-              </View>
-            </View>
-            <Text style={styles.timingMeta}>
-              Current: {formatDateTime(eventDraft.endTime)}
-            </Text>
-          </View>
-          <Text style={styles.sectionTitle}>Event location</Text>
-          <Text style={styles.bottomSheetMeta}>
-            Zoom and tap to drop the event pin.
-          </Text>
-          <View style={styles.createMapWrapper}>
-            <MapLibreGL.MapView
-              style={styles.createMap}
-              mapStyle={mapStyleUrl}
-              onPress={(event) => {
-                const geometry = event.geometry;
-
-                if (geometry?.type === "Point") {
-                  const coordinates = geometry.coordinates as [number, number];
-                  setEventLocation([coordinates[0], coordinates[1]]);
-                }
-                // const coordinates = event.geometry?.coordinates as
-                //   | [number, number]
-                //   | undefined;
-                // if (coordinates) {
-                //   setEventLocation([coordinates[0], coordinates[1]]);
-              }}
-            >
-              <MapLibreGL.Camera
-                centerCoordinate={eventLocation ?? centerCoordinate}
-                zoomLevel={13}
-              />
-              {eventLocation ? (
-                <MapLibreGL.PointAnnotation
-                  id="event-location"
-                  coordinate={eventLocation}
-                >
-                  <View style={styles.eventMarker} />
-                </MapLibreGL.PointAnnotation>
-              ) : null}
-            </MapLibreGL.MapView>
-          </View>
-          {eventLocation ? (
-            <Text style={styles.bottomSheetMeta}>
-              Selected: {eventLocation[1].toFixed(4)},{" "}
-              {eventLocation[0].toFixed(4)}
-            </Text>
-          ) : null}
-          {errorMessage ? (
-            <Text style={styles.error}>{errorMessage}</Text>
-          ) : null}
-          <Pressable style={styles.primaryButton} onPress={handleCreateEvent}>
-            <Text style={styles.primaryButtonText}>Create event</Text>
-          </Pressable>
-          <Pressable
-            style={styles.linkButton}
-            onPress={() => setShowCreateEvent(false)}
-          >
-            <Text style={styles.linkText}>Back to map</Text>
-          </Pressable>
-          <StatusBar style="dark" />
-        </ScrollView>
-      </SafeAreaView>
+      <CreateEventScreen
+        eventDraft={eventDraft}
+        availableCategories={availableCategories}
+        showCreateCategoryMenu={showCreateCategoryMenu}
+        newCategoryInput={newCategoryInput}
+        eventLocation={eventLocation}
+        centerCoordinate={centerCoordinate}
+        mapStyleUrl={mapStyleUrl}
+        errorMessage={errorMessage}
+        onChangeTitle={(value) =>
+          setEventDraft((prev) => ({ ...prev, title: value }))
+        }
+        onChangeDescription={(value) =>
+          setEventDraft((prev) => ({ ...prev, description: value }))
+        }
+        onToggleCategoryMenu={() =>
+          setShowCreateCategoryMenu((prev) => !prev)
+        }
+        onSelectCategory={(category) => {
+          setEventDraft((prev) => ({ ...prev, category }));
+          setNewCategoryInput("");
+          setShowCreateCategoryMenu(false);
+        }}
+        onChangeNewCategory={setNewCategoryInput}
+        onChangePrivacy={(value) =>
+          setEventDraft((prev) => ({ ...prev, type: value }))
+        }
+        onChangeStartDate={(value) =>
+          setEventDraft((prev) => ({
+            ...prev,
+            startTime: setDatePart(prev.startTime, value),
+          }))
+        }
+        onChangeStartTime={(value) =>
+          setEventDraft((prev) => ({
+            ...prev,
+            startTime: setTimePart(prev.startTime, value),
+          }))
+        }
+        onChangeEndDate={(value) =>
+          setEventDraft((prev) => ({
+            ...prev,
+            endTime: setDatePart(prev.endTime, value),
+          }))
+        }
+        onChangeEndTime={(value) =>
+          setEventDraft((prev) => ({
+            ...prev,
+            endTime: setTimePart(prev.endTime, value),
+          }))
+        }
+        onMapPress={setEventLocation}
+        onCreateEvent={handleCreateEvent}
+        onBack={() => setShowCreateEvent(false)}
+      />
     );
   }
 
   if (showChatScreen && chatEventId) {
     return (
-      <View style={styles.chatContainer}>
-        <View style={styles.chatHeader}>
-          <Text style={styles.chatTitle}>Event Chat</Text>
-          <Pressable
-            style={styles.linkButton}
-            onPress={() => setShowChatScreen(false)}
-          >
-            <Text style={styles.linkText}>Back</Text>
-          </Pressable>
-        </View>
-        <ScrollView contentContainerStyle={styles.chatMessages}>
-          {chatMessages.map((message) => (
-            <View key={message.id} style={styles.chatMessage}>
-              <Text style={styles.chatDisplayName}>
-                {message.displayName || "Member"}
-              </Text>
-              <Text style={styles.chatText}>{message.text}</Text>
-            </View>
-          ))}
-        </ScrollView>
-        <View style={styles.chatInputRow}>
-          <TextInput
-            placeholder="Write a message"
-            placeholderTextColor="#9ca3af"
-            style={[styles.input, styles.chatInput]}
-            value={chatDraft}
-            onChangeText={setChatDraft}
-          />
-          <Pressable style={styles.primaryButton} onPress={handleSendMessage}>
-            <Text style={styles.primaryButtonText}>Send</Text>
-          </Pressable>
-        </View>
-        <StatusBar style="dark" />
-      </View>
+      <ChatScreen
+        chatMessages={chatMessages}
+        chatDraft={chatDraft}
+        onChangeChatDraft={setChatDraft}
+        onSendMessage={handleSendMessage}
+        onBack={() => setShowChatScreen(false)}
+      />
     );
   }
 
@@ -1544,722 +910,47 @@ export default function App() {
   const canOpenChat = selectedEventDetail?.viewer?.isMember ?? false;
 
   return (
-    <View style={styles.container}>
-      <MapLibreGL.MapView style={styles.map} mapStyle={mapStyleUrl}>
-        <MapLibreGL.Camera centerCoordinate={centerCoordinate} zoomLevel={12} />
-        <MapLibreGL.ShapeSource
-          id="events"
-          shape={eventFeatures}
-          onPress={handleEventPress}
-        >
-          {/* Outer glow / halo */}
-          <MapLibreGL.CircleLayer
-            id="event-halo"
-            style={{
-              circleColor: markerColorExpression,
-
-              circleRadius: [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                8,
-                10,
-                12,
-                16,
-                16,
-                22,
-              ],
-
-              circleBlur: 1,
-              circleOpacity: 0.35,
-            }}
-          />
-
-          {/* Main pin */}
-          <MapLibreGL.CircleLayer
-            id="event-core"
-            style={{
-              circleColor: markerColorExpression,
-
-              circleRadius: [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-
-                // Zoom 8
-                8,
-                [
-                  "case",
-                  ["==", ["get", "id"], selectedEventId ?? ""],
-                  7, // selected
-                  5, // normal
-                ],
-
-                // Zoom 12
-                12,
-                ["case", ["==", ["get", "id"], selectedEventId ?? ""], 10, 7],
-
-                // Zoom 16
-                16,
-                ["case", ["==", ["get", "id"], selectedEventId ?? ""], 14, 10],
-              ],
-
-              circleStrokeColor: "#ffffff",
-              circleStrokeWidth: 2,
-            }}
-          />
-        </MapLibreGL.ShapeSource>
-      </MapLibreGL.MapView>
-      <View style={styles.searchBar}>
-        <View style={styles.searchRow}>
-          <TextInput
-            placeholder="Search activities"
-            placeholderTextColor="#9ca3af"
-            style={[styles.input, styles.searchInput]}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          <Pressable
-            style={styles.categoryButton}
-            onPress={() => setShowSearchCategoryMenu((prev) => !prev)}
-          >
-            <Text style={styles.categoryButtonText}>
-              {searchCategory || "Category"}
-            </Text>
-          </Pressable>
-          <Pressable style={styles.secondaryButton} onPress={handleSearchClear}>
-            <Text style={styles.secondaryButtonText}>Clear</Text>
-          </Pressable>
-        </View>
-        {showSearchCategoryMenu ? (
-          <View style={styles.categoryMenu}>
-            <ScrollView>
-              {availableCategories.length ? (
-                availableCategories.map((category) => (
-                  <Pressable
-                    key={category}
-                    style={styles.categoryOption}
-                    onPress={() => handleCategorySelect(category)}
-                  >
-                    <Text style={styles.categoryOptionText}>{category}</Text>
-                  </Pressable>
-                ))
-              ) : (
-                <Text style={styles.bottomSheetMeta}>No categories yet.</Text>
-              )}
-            </ScrollView>
-          </View>
-        ) : null}
-      </View>
-      <Pressable style={styles.profileButton} onPress={handleOpenProfile}>
-        <Text style={styles.profileButtonText}>Profile</Text>
-      </Pressable>
-      <Pressable
-        style={styles.createEventButton}
-        onPress={() => setShowCreateEvent(true)}
-      >
-        <Text style={styles.createEventButtonText}>Create</Text>
-      </Pressable>
-      {isLocationUnavailable ? (
-        <Pressable style={styles.demoAreaButton} onPress={handleDemoArea}>
-          <Text style={styles.demoAreaButtonText}>Demo Area</Text>
-        </Pressable>
-      ) : null}
-      <View style={styles.attributionContainer}>
-        <Text style={styles.attributionText}>© OpenStreetMap contributors</Text>
-      </View>
-      {selectedEventId ? (
-        <View style={styles.bottomSheet}>
-          <Text style={styles.bottomSheetTitle}>
-            {selectedEvent?.title ?? "Event Details"}
-          </Text>
-          <Text style={styles.bottomSheetText}>
-            {selectedEvent?.description ?? "Tap a pin to view details."}
-          </Text>
-          <Text style={styles.bottomSheetMeta}>
-            {selectedEvent
-              ? `${selectedEvent.category} • ${selectedEvent.type}`
-              : ""}
-          </Text>
-          {isLoadingEventDetail ? (
-            <Text style={styles.bottomSheetMeta}>Loading details...</Text>
-          ) : null}
-          {selectedEventDetail?.location ? (
-            <Text style={styles.bottomSheetMeta}>
-              Location: {selectedEventDetail.location.coordinates[1].toFixed(4)}
-              , {selectedEventDetail.location.coordinates[0].toFixed(4)}
-            </Text>
-          ) : selectedEvent?.type === "private" ? (
-            <Text style={styles.bottomSheetMeta}>
-              Exact location hidden until approved.
-            </Text>
-          ) : null}
-          {selectedEvent?.type === "private" && canOpenChat ? (
-            <Pressable style={styles.primaryButton} onPress={handleOpenChat}>
-              <Text style={styles.primaryButtonText}>Open Chat</Text>
-            </Pressable>
-          ) : null}
-          {selectedEvent ? (
-            <Pressable
-              style={styles.secondaryButton}
-              onPress={() => handleShareEvent(selectedEvent)}
-            >
-              <Text style={styles.secondaryButtonText}>Share</Text>
-            </Pressable>
-          ) : null}
-          {canRequestJoin ? (
-            <Pressable
-              style={styles.primaryButton}
-              onPress={handleRequestJoin}
-              disabled={isSubmittingJoinRequest}
-            >
-              <Text style={styles.primaryButtonText}>
-                {isSubmittingJoinRequest ? "Requesting..." : "Request to Join"}
-              </Text>
-            </Pressable>
-          ) : null}
-          {isJoinPending ? (
-            <Text style={styles.bottomSheetMeta}>
-              Join request pending approval.
-            </Text>
-          ) : null}
-          {isAdmin ? (
-            <View style={styles.adminPanel}>
-              <Text style={styles.sectionTitle}>Join requests</Text>
-              {isLoadingRequests ? (
-                <Text style={styles.bottomSheetMeta}>Loading requests...</Text>
-              ) : null}
-              {selectedEventRequests.length ? (
-                selectedEventRequests.map((request) => (
-                  <View key={request.id} style={styles.requestRow}>
-                    <View style={styles.requestInfo}>
-                      <Text style={styles.requestText}>{request.userId}</Text>
-                      <Text style={styles.requestStatus}>{request.status}</Text>
-                    </View>
-                    <View style={styles.requestActions}>
-                      <Pressable
-                        style={styles.secondaryButton}
-                        onPress={() =>
-                          handleRequestDecision(request.id, "approve")
-                        }
-                        disabled={request.status !== "pending"}
-                      >
-                        <Text style={styles.secondaryButtonText}>Approve</Text>
-                      </Pressable>
-                      <Pressable
-                        style={styles.rejectButton}
-                        onPress={() =>
-                          handleRequestDecision(request.id, "reject")
-                        }
-                        disabled={request.status !== "pending"}
-                      >
-                        <Text style={styles.rejectButtonText}>Reject</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ))
-              ) : (
-                <Text style={styles.bottomSheetMeta}>
-                  No join requests yet.
-                </Text>
-              )}
-            </View>
-          ) : null}
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={() => setSelectedEventId(null)}
-          >
-            <Text style={styles.secondaryButtonText}>Close</Text>
-          </Pressable>
-        </View>
-      ) : null}
-      {isLoadingEvents ? (
-        <View style={styles.loadingEventsBadge}>
-          <Text style={styles.loadingEventsText}>Loading events...</Text>
-        </View>
-      ) : null}
-      <StatusBar style="light" />
-    </View>
+    <MapScreen
+      mapStyleUrl={mapStyleUrl}
+      centerCoordinate={centerCoordinate}
+      eventFeatures={eventFeatures}
+      selectedEventId={selectedEventId}
+      onEventPress={handleEventPress}
+      searchQuery={searchQuery}
+      onSearchQueryChange={setSearchQuery}
+      searchCategory={searchCategory}
+      showSearchCategoryMenu={showSearchCategoryMenu}
+      onToggleSearchCategoryMenu={() =>
+        setShowSearchCategoryMenu((prev) => !prev)
+      }
+      onCategorySelect={handleCategorySelect}
+      onSearchClear={handleSearchClear}
+      availableCategories={availableCategories}
+      onOpenProfile={handleOpenProfile}
+      onCreateEvent={() => setShowCreateEvent(true)}
+      isLocationUnavailable={isLocationUnavailable}
+      onDemoArea={handleDemoArea}
+      isLoadingEvents={isLoadingEvents}
+      bottomSheet={
+        <EventBottomSheet
+          selectedEventId={selectedEventId}
+          selectedEvent={selectedEvent}
+          selectedEventDetail={selectedEventDetail}
+          isLoadingEventDetail={isLoadingEventDetail}
+          isLoadingRequests={isLoadingRequests}
+          isSubmittingJoinRequest={isSubmittingJoinRequest}
+          canOpenChat={canOpenChat}
+          canRequestJoin={canRequestJoin}
+          isJoinPending={isJoinPending}
+          isAdmin={isAdmin}
+          selectedEventRequests={selectedEventRequests}
+          onOpenChat={handleOpenChat}
+          onShareEvent={handleShareEvent}
+          onRequestJoin={handleRequestJoin}
+          onRequestDecision={handleRequestDecision}
+          onClose={() => setSelectedEventId(null)}
+        />
+      }
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-  },
-  safeAreaContent: {
-    paddingBottom: 32,
-  },
-  container: {
-    flex: 1,
-  },
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  authContainer: {
-    flex: 1,
-    padding: 32,
-    justifyContent: "center",
-    backgroundColor: "#f8fafc",
-  },
-  profileContainer: {
-    flexGrow: 1,
-    padding: 24,
-    justifyContent: "center",
-    backgroundColor: "#f8fafc",
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: "#475569",
-    marginBottom: 24,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: "#0f172a",
-    marginBottom: 12,
-  },
-  textArea: {
-    minHeight: 90,
-    textAlignVertical: "top",
-  },
-  primaryButton: {
-    backgroundColor: "#2563eb",
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  primaryButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  secondaryButton: {
-    backgroundColor: "#e2e8f0",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  eventMarker: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: "#2563eb",
-    borderWidth: 2,
-    borderColor: "#fff",
-  },
-
-  secondaryButtonText: {
-    color: "#1e293b",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  logoutButton: {
-    backgroundColor: "#ef4444",
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-    marginTop: 12,
-  },
-  logoutButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  linkButton: {
-    marginTop: 16,
-    alignItems: "center",
-  },
-  linkText: {
-    color: "#2563eb",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  error: {
-    color: "#dc2626",
-    marginBottom: 8,
-  },
-  interestRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  interestInput: {
-    flex: 1,
-    marginBottom: 0,
-  },
-  tagWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 8,
-  },
-  tag: {
-    backgroundColor: "#e0e7ff",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  tagText: {
-    color: "#3730a3",
-    fontWeight: "600",
-  },
-  profileValue: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#0f172a",
-    marginBottom: 8,
-  },
-  profileBio: {
-    fontSize: 16,
-    color: "#475569",
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 8,
-    color: "#0f172a",
-  },
-  mutedText: {
-    color: "#64748b",
-  },
-  timingCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    padding: 12,
-    marginBottom: 12,
-  },
-  timingLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#0f172a",
-    marginBottom: 6,
-  },
-  timingMeta: {
-    fontSize: 12,
-    color: "#64748b",
-  },
-  timingRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  timingField: {
-    flex: 1,
-  },
-  timingFieldLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#475569",
-    marginBottom: 6,
-  },
-  timingInput: {
-    marginBottom: 0,
-  },
-  map: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  searchBar: {
-    position: "absolute",
-    top: 52,
-    left: 16,
-    right: 16,
-    backgroundColor: "rgba(255,255,255,0.96)",
-    borderRadius: 16,
-    padding: 12,
-    gap: 8,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    marginBottom: 0,
-    paddingVertical: 8,
-    fontSize: 14,
-  },
-  categoryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  categoryInput: {
-    flex: 1,
-    marginBottom: 0,
-  },
-  categoryButton: {
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minWidth: 110,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  categoryButtonText: {
-    color: "#1e293b",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  categoryMenu: {
-    marginTop: 8,
-    maxHeight: 160,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 12,
-    backgroundColor: "#fff",
-    padding: 8,
-  },
-  categoryOption: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-  },
-  categoryOptionText: {
-    fontSize: 14,
-    color: "#0f172a",
-  },
-  createMapWrapper: {
-    borderRadius: 16,
-    overflow: "hidden",
-    height: 220,
-    marginBottom: 12,
-  },
-  createMap: {
-    flex: 1,
-  },
-  attributionContainer: {
-    position: "absolute",
-    bottom: 12,
-    left: 12,
-    backgroundColor: "rgba(255,255,255,0.8)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  attributionText: {
-    fontSize: 12,
-    color: "#1e293b",
-  },
-  profileButton: {
-    position: "absolute",
-    top: 140,
-    right: 16,
-    backgroundColor: "rgba(15, 23, 42, 0.8)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  profileButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  createEventButton: {
-    position: "absolute",
-    top: 140,
-    left: 16,
-    backgroundColor: "rgba(37, 99, 235, 0.9)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  createEventButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  demoAreaButton: {
-    position: "absolute",
-    top: 188,
-    left: 16,
-    backgroundColor: "rgba(15, 23, 42, 0.75)",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  demoAreaButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  bottomSheet: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 24,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  bottomSheetTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 8,
-    color: "#0f172a",
-  },
-  bottomSheetText: {
-    fontSize: 14,
-    color: "#475569",
-    marginBottom: 12,
-  },
-  bottomSheetMeta: {
-    fontSize: 12,
-    color: "#94a3b8",
-    marginBottom: 12,
-  },
-  chatContainer: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-    padding: 16,
-  },
-  chatHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  chatTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#0f172a",
-  },
-  chatMessages: {
-    paddingBottom: 16,
-  },
-  chatMessage: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  chatDisplayName: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#475569",
-    marginBottom: 4,
-  },
-  chatText: {
-    fontSize: 14,
-    color: "#0f172a",
-  },
-  chatInputRow: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-  },
-  chatInput: {
-    flex: 1,
-    marginBottom: 0,
-  },
-  adminPanel: {
-    marginTop: 8,
-    marginBottom: 12,
-    gap: 8,
-  },
-  requestRow: {
-    backgroundColor: "#f8fafc",
-    borderRadius: 12,
-    padding: 12,
-    gap: 8,
-  },
-  requestInfo: {
-    gap: 4,
-  },
-  requestText: {
-    fontSize: 12,
-    color: "#0f172a",
-    fontWeight: "600",
-  },
-  requestStatus: {
-    fontSize: 12,
-    color: "#64748b",
-  },
-  requestActions: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  rejectButton: {
-    backgroundColor: "#fee2e2",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rejectButtonText: {
-    color: "#b91c1c",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  loadingEventsBadge: {
-    position: "absolute",
-    top: 110,
-    alignSelf: "center",
-    backgroundColor: "rgba(15, 23, 42, 0.8)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  loadingEventsText: {
-    color: "#fff",
-    fontSize: 12,
-  },
-  privacyRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 12,
-  },
-  privacyToggle: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#cbd5f5",
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  privacyToggleActive: {
-    backgroundColor: "#e0e7ff",
-    borderColor: "#6366f1",
-  },
-  privacyToggleText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#475569",
-  },
-  privacyToggleTextActive: {
-    color: "#3730a3",
-  },
-});
