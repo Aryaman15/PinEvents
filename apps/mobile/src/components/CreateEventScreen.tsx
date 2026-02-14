@@ -1,5 +1,6 @@
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { EventDraft } from '../types/app';
 
 type Props = {
@@ -12,48 +13,45 @@ type Props = {
   onBack: () => void;
 };
 
-const getDatePart = (value: string) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '';
+type PickerTarget = 'start' | 'end';
+type PickerMode = 'date' | 'time';
 
-  const year = parsed.getFullYear();
-  const month = String(parsed.getMonth() + 1).padStart(2, '0');
-  const day = String(parsed.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+type ActivePicker = {
+  target: PickerTarget;
+  mode: PickerMode;
 };
 
-const getTimePart = (value: string) => {
+const formatDisplayDate = (value: string) => {
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '';
-  const hours = String(parsed.getHours()).padStart(2, '0');
-  const minutes = String(parsed.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes}`;
+  if (Number.isNaN(parsed.getTime())) return 'Select date';
+  return parsed.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const setDatePart = (value: string, nextDate: string) => {
+const formatDisplayTime = (value: string) => {
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-
-  const [year, month, day] = nextDate.split('-').map(Number);
-  if (!year || !month || !day) return value;
-
-  parsed.setFullYear(year, month - 1, day);
-  return parsed.toISOString();
+  if (Number.isNaN(parsed.getTime())) return 'Select time';
+  return parsed.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 };
 
-const setTimePart = (value: string, nextTime: string) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
+const mergeDate = (baseIso: string, pickedDate: Date) => {
+  const base = new Date(baseIso);
+  if (Number.isNaN(base.getTime())) return baseIso;
+  const next = new Date(base);
+  next.setFullYear(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
+  return next.toISOString();
+};
 
-  const [hours, minutes] = nextTime.split(':').map(Number);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return value;
-
-  parsed.setHours(hours, minutes, 0, 0);
-  return parsed.toISOString();
+const mergeTime = (baseIso: string, pickedTime: Date) => {
+  const base = new Date(baseIso);
+  if (Number.isNaN(base.getTime())) return baseIso;
+  const next = new Date(base);
+  next.setHours(pickedTime.getHours(), pickedTime.getMinutes(), 0, 0);
+  return next.toISOString();
 };
 
 export function CreateEventScreen({ draft, categoryInput, categories, onDraft, onCategoryInput, onCreate, onBack }: Props) {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [activePicker, setActivePicker] = useState<ActivePicker | null>(null);
 
   const filteredCategories = useMemo(() => {
     const query = categoryInput.trim().toLowerCase();
@@ -79,6 +77,38 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
     onDraft({ ...draft, category: nextCategory });
     onCategoryInput(nextCategory);
     setShowCategoryDropdown(false);
+  };
+
+  const pickerIsoValue =
+    activePicker?.target === 'start'
+      ? draft.startTime
+      : activePicker?.target === 'end'
+        ? draft.endTime
+        : new Date().toISOString();
+
+  const handlePickerChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (!activePicker) return;
+
+    if (Platform.OS !== 'ios') {
+      setActivePicker(null);
+    }
+
+    if (event.type === 'dismissed' || !selectedDate) {
+      return;
+    }
+
+    if (activePicker.target === 'start') {
+      const nextStart = activePicker.mode === 'date'
+        ? mergeDate(draft.startTime, selectedDate)
+        : mergeTime(draft.startTime, selectedDate);
+      onDraft({ ...draft, startTime: nextStart });
+      return;
+    }
+
+    const nextEnd = activePicker.mode === 'date'
+      ? mergeDate(draft.endTime, selectedDate)
+      : mergeTime(draft.endTime, selectedDate);
+    onDraft({ ...draft, endTime: nextEnd });
   };
 
   return (
@@ -136,38 +166,42 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
         <View className="gap-2">
           <Text className="text-xs font-medium text-slate-500">Start</Text>
           <View className="flex-row gap-2">
-            <TextInput
-              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-              placeholder="YYYY-MM-DD"
-              value={getDatePart(draft.startTime)}
-              onChangeText={(nextDate) => onDraft({ ...draft, startTime: setDatePart(draft.startTime, nextDate) })}
-            />
-            <TextInput
-              className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-              placeholder="HH:MM"
-              value={getTimePart(draft.startTime)}
-              onChangeText={(nextTime) => onDraft({ ...draft, startTime: setTimePart(draft.startTime, nextTime) })}
-            />
+            <Pressable className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3" onPress={() => setActivePicker({ target: 'start', mode: 'date' })}>
+              <Text className="text-slate-800">📅 {formatDisplayDate(draft.startTime)}</Text>
+            </Pressable>
+            <Pressable className="w-36 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3" onPress={() => setActivePicker({ target: 'start', mode: 'time' })}>
+              <Text className="text-slate-800">🕒 {formatDisplayTime(draft.startTime)}</Text>
+            </Pressable>
           </View>
         </View>
 
         <View className="gap-2">
           <Text className="text-xs font-medium text-slate-500">End</Text>
           <View className="flex-row gap-2">
-            <TextInput
-              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-              placeholder="YYYY-MM-DD"
-              value={getDatePart(draft.endTime)}
-              onChangeText={(nextDate) => onDraft({ ...draft, endTime: setDatePart(draft.endTime, nextDate) })}
-            />
-            <TextInput
-              className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-              placeholder="HH:MM"
-              value={getTimePart(draft.endTime)}
-              onChangeText={(nextTime) => onDraft({ ...draft, endTime: setTimePart(draft.endTime, nextTime) })}
-            />
+            <Pressable className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3" onPress={() => setActivePicker({ target: 'end', mode: 'date' })}>
+              <Text className="text-slate-800">📅 {formatDisplayDate(draft.endTime)}</Text>
+            </Pressable>
+            <Pressable className="w-36 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3" onPress={() => setActivePicker({ target: 'end', mode: 'time' })}>
+              <Text className="text-slate-800">🕒 {formatDisplayTime(draft.endTime)}</Text>
+            </Pressable>
           </View>
         </View>
+
+        {!!activePicker && (
+          <View className="rounded-lg border border-blue-100 bg-blue-50 p-2">
+            <DateTimePicker
+              value={new Date(pickerIsoValue)}
+              mode={activePicker.mode}
+              display={activePicker.mode === 'date' ? 'default' : 'spinner'}
+              onChange={handlePickerChange}
+            />
+            {Platform.OS === 'ios' && (
+              <Pressable className="mt-2 rounded-md bg-blue-600 px-3 py-2" onPress={() => setActivePicker(null)}>
+                <Text className="text-center text-white font-medium">Done</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
       </View>
 
       <Pressable className="bg-blue-600 rounded-xl px-4 py-3" onPress={onCreate}><Text className="text-white text-center">Create</Text></Pressable>
