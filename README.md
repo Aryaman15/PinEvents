@@ -2,7 +2,7 @@
 
 PinEvents is a monorepo for the mobile MVP and API server.
 
-## Prereqs
+## Prereqs for setup
 
 - Node.js (LTS recommended)
 - npm (comes with Node.js)
