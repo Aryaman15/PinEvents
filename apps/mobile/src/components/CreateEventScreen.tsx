@@ -12,6 +12,46 @@ type Props = {
   onBack: () => void;
 };
 
+const getDatePart = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getTimePart = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const hours = String(parsed.getHours()).padStart(2, '0');
+  const minutes = String(parsed.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+const setDatePart = (value: string, nextDate: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+
+  const [year, month, day] = nextDate.split('-').map(Number);
+  if (!year || !month || !day) return value;
+
+  parsed.setFullYear(year, month - 1, day);
+  return parsed.toISOString();
+};
+
+const setTimePart = (value: string, nextTime: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+
+  const [hours, minutes] = nextTime.split(':').map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return value;
+
+  parsed.setHours(hours, minutes, 0, 0);
+  return parsed.toISOString();
+};
+
 export function CreateEventScreen({ draft, categoryInput, categories, onDraft, onCategoryInput, onCreate, onBack }: Props) {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
@@ -89,8 +129,47 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
         <Pressable className={`flex-1 rounded-xl px-4 py-3 ${draft.type === 'public' ? 'bg-blue-600' : 'bg-slate-200'}`} onPress={() => onDraft({ ...draft, type: 'public' })}><Text className={`text-center ${draft.type === 'public' ? 'text-white' : 'text-slate-700'}`}>Public</Text></Pressable>
         <Pressable className={`flex-1 rounded-xl px-4 py-3 ${draft.type === 'private' ? 'bg-blue-600' : 'bg-slate-200'}`} onPress={() => onDraft({ ...draft, type: 'private' })}><Text className={`text-center ${draft.type === 'private' ? 'text-white' : 'text-slate-700'}`}>Private</Text></Pressable>
       </View>
-      <TextInput className="rounded-xl border border-slate-200 bg-white px-4 py-3" placeholder="Start time (ISO)" value={draft.startTime} onChangeText={(v) => onDraft({ ...draft, startTime: v })} />
-      <TextInput className="rounded-xl border border-slate-200 bg-white px-4 py-3" placeholder="End time (ISO)" value={draft.endTime} onChangeText={(v) => onDraft({ ...draft, endTime: v })} />
+
+      <View className="rounded-xl border border-slate-200 bg-white p-3 gap-3">
+        <Text className="text-sm font-semibold text-slate-700">Schedule</Text>
+
+        <View className="gap-2">
+          <Text className="text-xs font-medium text-slate-500">Start</Text>
+          <View className="flex-row gap-2">
+            <TextInput
+              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+              placeholder="YYYY-MM-DD"
+              value={getDatePart(draft.startTime)}
+              onChangeText={(nextDate) => onDraft({ ...draft, startTime: setDatePart(draft.startTime, nextDate) })}
+            />
+            <TextInput
+              className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+              placeholder="HH:MM"
+              value={getTimePart(draft.startTime)}
+              onChangeText={(nextTime) => onDraft({ ...draft, startTime: setTimePart(draft.startTime, nextTime) })}
+            />
+          </View>
+        </View>
+
+        <View className="gap-2">
+          <Text className="text-xs font-medium text-slate-500">End</Text>
+          <View className="flex-row gap-2">
+            <TextInput
+              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+              placeholder="YYYY-MM-DD"
+              value={getDatePart(draft.endTime)}
+              onChangeText={(nextDate) => onDraft({ ...draft, endTime: setDatePart(draft.endTime, nextDate) })}
+            />
+            <TextInput
+              className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+              placeholder="HH:MM"
+              value={getTimePart(draft.endTime)}
+              onChangeText={(nextTime) => onDraft({ ...draft, endTime: setTimePart(draft.endTime, nextTime) })}
+            />
+          </View>
+        </View>
+      </View>
+
       <Pressable className="bg-blue-600 rounded-xl px-4 py-3" onPress={onCreate}><Text className="text-white text-center">Create</Text></Pressable>
       <Pressable onPress={onBack}><Text className="text-blue-600 text-center">Back</Text></Pressable>
     </ScrollView>
