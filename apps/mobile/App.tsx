@@ -454,7 +454,7 @@ export default function App() {
 
     try {
       const response = await fetch(`${apiUrl}/me`, {
-        method: "PUT",
+        method: "patch",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${authToken}`,
