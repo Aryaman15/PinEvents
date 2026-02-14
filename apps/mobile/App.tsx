@@ -454,7 +454,7 @@ export default function App() {
 
     try {
       const response = await fetch(`${apiUrl}/me`, {
-        method: "PUT",
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${authToken}`,
@@ -749,7 +749,7 @@ export default function App() {
 
     try {
       const response = await fetch(
-        `${apiUrl}/events/${selectedEventDetail.id}/request-join`,
+        `${apiUrl}/events/${selectedEventDetail.id}/join`,
         {
           method: "POST",
           headers: {
@@ -820,30 +820,72 @@ export default function App() {
     }
   }
 
+  // const handleRequestDecision = async (
+  //   requestId: string,
+  //   action: "approve" | "reject",
+  // ) => {
+  //   if (!authToken || !selectedEventDetail) {
+  //     return;
+  //   }
+  //   // if (!apiUrl) {
+  //   //   setErrorMessage("EXPO_PUBLIC_API_URL is not set.");
+  //   //   return;
+  //   // }
+
+  //   try {
+  //     const response = await fetch(
+  //       `${apiUrl}/events/${selectedEventDetail.id}/requests/${requestId}/${action}`,
+  //       {
+  //         method: "PATCH",
+  //         headers: {
+  //           Authorization: `Bearer ${authToken}`,
+  //         },
+  //       },
+  //     );
+
+  //     if (!response.ok) {
+  //       setErrorMessage("Unable to update request.");
+  //       return;
+  //     }
+
+  //     setSelectedEventRequests((prev) =>
+  //       prev.map((request) =>
+  //         request.id === requestId
+  //           ? {
+  //               ...request,
+  //               status: action === "approve" ? "approved" : "rejected",
+  //             }
+  //           : request,
+  //       ),
+  //     );
+  //   } catch (error) {
+  //     setErrorMessage("Unable to reach the server.");
+  //   }
+  // };
   const handleRequestDecision = async (
     requestId: string,
     action: "approve" | "reject",
   ) => {
-    if (!authToken || !selectedEventDetail) {
-      return;
-    }
-    // if (!apiUrl) {
-    //   setErrorMessage("EXPO_PUBLIC_API_URL is not set.");
-    //   return;
-    // }
+    if (!authToken || !selectedEventDetail) return;
 
     try {
       const response = await fetch(
-        `${apiUrl}/events/${selectedEventDetail.id}/requests/${requestId}/${action}`,
+        `${apiUrl}/events/${selectedEventDetail.id}/requests/${requestId}`,
         {
-          method: "POST",
+          method: "PATCH",
           headers: {
+            "Content-Type": "application/json",
             Authorization: `Bearer ${authToken}`,
           },
+          body: JSON.stringify({
+            status: action === "approve" ? "approved" : "rejected",
+          }),
         },
       );
 
       if (!response.ok) {
+        const text = await response.text();
+        console.log(text);
         setErrorMessage("Unable to update request.");
         return;
       }
@@ -859,6 +901,7 @@ export default function App() {
         ),
       );
     } catch (error) {
+      console.log(error);
       setErrorMessage("Unable to reach the server.");
     }
   };

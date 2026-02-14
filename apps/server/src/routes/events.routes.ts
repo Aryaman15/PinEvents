@@ -8,6 +8,7 @@ import {
   listJoinRequests,
   listMessages,
   requestJoin,
+  sendMessage,
 } from "../controllers/eventsController";
 import { requireAuth } from "../middleware/requireAuth";
 
@@ -42,3 +43,4 @@ eventsRouter.patch(
 );
 
 eventsRouter.get("/:id/messages", requireAuth, listMessages);
+eventsRouter.post("/:id/messages", requireAuth, sendMessage);
