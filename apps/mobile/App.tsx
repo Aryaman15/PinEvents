@@ -110,6 +110,11 @@ export default function App() {
     if (!authToken || !selectedEventId) return;
     fetch(`${apiUrl}/events/${selectedEventId}`, { headers: { Authorization: `Bearer ${authToken}` } })
       .then(async (res) => {
+        if (res.status === 401) {
+          setErrorMessage('Session expired. Please log in again.');
+          await handleLogout();
+          return;
+        }
         if (!res.ok) throw new Error();
         const data = await res.json() as { event?: EventDetail };
         setSelectedEventDetail(data.event ?? null);
@@ -138,12 +143,29 @@ export default function App() {
 
   const loadProfile = async (token: string) => {
     const response = await fetch(`${apiUrl}/me`, { headers: { Authorization: `Bearer ${token}` } });
-    if (response.status === 401) return handleLogout();
-    if (!response.ok) return setErrorMessage('Unable to load profile.');
+    if (response.status === 401) {
+      setErrorMessage('Session expired. Please log in again.');
+      await handleLogout();
+      return false;
+    }
+    if (!response.ok) {
+      setErrorMessage('Unable to load profile.');
+      return false;
+    }
     const data = await response.json() as { user?: Profile };
-    if (!data.user) return;
+    if (!data.user) return false;
     setProfile(data.user);
     setProfileDraft(data.user);
+    return true;
+  };
+
+  const handleOpenProfile = async () => {
+    if (!authToken) return;
+    if (!profile) {
+      const loaded = await loadProfile(authToken);
+      if (!loaded) return;
+    }
+    setShowProfileScreen(true);
   };
 
   const handleAuth = async () => {
@@ -166,6 +188,11 @@ export default function App() {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
       body: JSON.stringify(profileDraft),
     });
+    if (response.status === 401) {
+      setErrorMessage('Session expired. Please log in again.');
+      await handleLogout();
+      return;
+    }
     if (!response.ok) return setErrorMessage('Unable to save profile.');
     const data = await response.json() as { user?: Profile };
     if (!data.user) return;
@@ -180,6 +207,12 @@ export default function App() {
     if (query.trim()) params.set('q', query.trim());
     if (category.trim()) params.set('category', category.trim());
     const response = await fetch(`${apiUrl}/events/near?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (response.status === 401) {
+      setErrorMessage('Session expired. Please log in again.');
+      await handleLogout();
+      setIsLoadingEvents(false);
+      return;
+    }
     if (!response.ok) {
       setIsLoadingEvents(false);
       return setErrorMessage('Unable to load nearby events.');
@@ -203,6 +236,11 @@ export default function App() {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
       body: JSON.stringify({ ...eventDraft, category: finalCategory, location: { type: 'Point', coordinates: centerCoordinate } }),
     });
+    if (response.status === 401) {
+      setErrorMessage('Session expired. Please log in again.');
+      await handleLogout();
+      return;
+    }
     if (!response.ok) return setErrorMessage('Unable to create event.');
     setShowCreateEvent(false);
     setNewCategoryInput('');
@@ -215,6 +253,12 @@ export default function App() {
     const response = await fetch(`${apiUrl}/events/${selectedEventDetail.id}/join`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
     });
+    if (response.status === 401) {
+      setErrorMessage('Session expired. Please log in again.');
+      setIsSubmittingJoinRequest(false);
+      await handleLogout();
+      return;
+    }
     if (!response.ok) {
       setIsSubmittingJoinRequest(false);
       return setErrorMessage('Unable to request access.');
@@ -235,6 +279,11 @@ export default function App() {
   const loadJoinRequests = async (eventId: string) => {
     if (!authToken) return;
     const response = await fetch(`${apiUrl}/events/${eventId}/requests`, { headers: { Authorization: `Bearer ${authToken}` } });
+    if (response.status === 401) {
+      setErrorMessage('Session expired. Please log in again.');
+      await handleLogout();
+      return;
+    }
     if (!response.ok) return;
     const data = await response.json() as { requests?: JoinRequest[] };
     setSelectedEventRequests(data.requests ?? []);
@@ -247,6 +296,11 @@ export default function App() {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
       body: JSON.stringify({ status: action }),
     });
+    if (response.status === 401) {
+      setErrorMessage('Session expired. Please log in again.');
+      await handleLogout();
+      return;
+    }
     if (!response.ok) return setErrorMessage('Unable to update request.');
     setSelectedEventRequests((prev) => prev.map((request) => request.id === requestId ? { ...request, status: action } : request));
   };
@@ -254,6 +308,11 @@ export default function App() {
   const loadEventMessages = async (eventId: string) => {
     if (!authToken) return;
     const response = await fetch(`${apiUrl}/events/${eventId}/messages`, { headers: { Authorization: `Bearer ${authToken}` } });
+    if (response.status === 401) {
+      setErrorMessage('Session expired. Please log in again.');
+      await handleLogout();
+      return;
+    }
     if (!response.ok) return setErrorMessage('Unable to load chat history.');
     const data = await response.json() as { messages?: EventMessage[] };
     setChatMessages(data.messages ?? []);
@@ -343,7 +402,7 @@ export default function App() {
         onSearchCategory={setSearchCategory}
         onClearSearch={() => { setSearchQuery(''); setSearchCategory(''); }}
         onOpenCreate={() => setShowCreateEvent(true)}
-        onOpenProfile={() => setShowProfileScreen(true)}
+        onOpenProfile={() => handleOpenProfile().catch(() => setErrorMessage('Unable to load profile.'))}
         onEventPress={handleEventPress}
         onRequestJoin={() => handleRequestJoin().catch(() => setErrorMessage('Unable to reach the server.'))}
         onRequestDecision={(requestId, action) => handleRequestDecision(requestId, action).catch(() => setErrorMessage('Unable to reach the server.'))}
