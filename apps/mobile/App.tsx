@@ -142,21 +142,31 @@ export default function App() {
   }, [selectedEventDetail?.id, selectedEventDetail?.viewer?.role]);
 
   const loadProfile = async (token: string) => {
-    const response = await fetch(`${apiUrl}/me`, { headers: { Authorization: `Bearer ${token}` } });
-    if (response.status === 401) {
-      setErrorMessage('Session expired. Please log in again.');
-      await handleLogout();
+    try {
+      const response = await fetch(`${apiUrl}/me`, { headers: { Authorization: `Bearer ${token}` } });
+      if (response.status === 401) {
+        setErrorMessage('Session expired. Please log in again.');
+        await handleLogout();
+        return false;
+      }
+      if (!response.ok) {
+        setErrorMessage('Unable to load profile. Please log in again.');
+        await handleLogout();
+        return false;
+      }
+      const data = await response.json() as { user?: Profile };
+      if (!data.user) {
+        setErrorMessage('Unable to load profile. Please log in again.');
+        await handleLogout();
+        return false;
+      }
+      setProfile(data.user);
+      setProfileDraft(data.user);
+      return true;
+    } catch {
+      setErrorMessage('Unable to reach the server.');
       return false;
     }
-    if (!response.ok) {
-      setErrorMessage('Unable to load profile.');
-      return false;
-    }
-    const data = await response.json() as { user?: Profile };
-    if (!data.user) return false;
-    setProfile(data.user);
-    setProfileDraft(data.user);
-    return true;
   };
 
   const handleOpenProfile = async () => {
@@ -184,7 +194,7 @@ export default function App() {
   const handleSaveProfile = async () => {
     if (!authToken) return;
     const response = await fetch(`${apiUrl}/me`, {
-      method: 'PUT',
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
       body: JSON.stringify(profileDraft),
     });
