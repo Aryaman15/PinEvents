@@ -1,5 +1,4 @@
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { useMemo, useState } from 'react';
+import { ComponentType, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { EventDraft } from '../types/app';
 
@@ -19,6 +18,26 @@ type PickerMode = 'date' | 'time';
 type ActivePicker = {
   target: PickerTarget;
   mode: PickerMode;
+};
+
+type DateTimePickerEventLike = { type?: 'set' | 'dismissed' };
+
+type DateTimePickerModule = {
+  DateTimePicker: ComponentType<{
+    value: Date;
+    mode: PickerMode;
+    display?: 'default' | 'spinner';
+    onChange: (event: DateTimePickerEventLike, selectedDate?: Date) => void;
+  }>;
+};
+
+const loadDateTimePicker = (): DateTimePickerModule | null => {
+  try {
+    const module = require('@react-native-community/datetimepicker');
+    return { DateTimePicker: module.default };
+  } catch {
+    return null;
+  }
 };
 
 const formatDisplayDate = (value: string) => {
@@ -49,9 +68,45 @@ const mergeTime = (baseIso: string, pickedTime: Date) => {
   return next.toISOString();
 };
 
+const getDatePart = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getTimePart = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const hours = String(parsed.getHours()).padStart(2, '0');
+  const minutes = String(parsed.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+const setDatePart = (value: string, nextDate: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const [year, month, day] = nextDate.split('-').map(Number);
+  if (!year || !month || !day) return value;
+  parsed.setFullYear(year, month - 1, day);
+  return parsed.toISOString();
+};
+
+const setTimePart = (value: string, nextTime: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const [hours, minutes] = nextTime.split(':').map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return value;
+  parsed.setHours(hours, minutes, 0, 0);
+  return parsed.toISOString();
+};
+
 export function CreateEventScreen({ draft, categoryInput, categories, onDraft, onCategoryInput, onCreate, onBack }: Props) {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [activePicker, setActivePicker] = useState<ActivePicker | null>(null);
+  const [nativePickerAvailable] = useState(() => Boolean(loadDateTimePicker()));
 
   const filteredCategories = useMemo(() => {
     const query = categoryInput.trim().toLowerCase();
@@ -86,7 +141,7 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
         ? draft.endTime
         : new Date().toISOString();
 
-  const handlePickerChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+  const handlePickerChange = (event: DateTimePickerEventLike, selectedDate?: Date) => {
     if (!activePicker) return;
 
     if (Platform.OS !== 'ios') {
@@ -110,6 +165,8 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
       : mergeTime(draft.endTime, selectedDate);
     onDraft({ ...draft, endTime: nextEnd });
   };
+
+  const DateTimePicker = loadDateTimePicker()?.DateTimePicker;
 
   return (
     <ScrollView className="flex-1 bg-slate-50" contentContainerStyle={{ padding: 24, rowGap: 12 }} keyboardShouldPersistTaps="handled">
@@ -166,28 +223,54 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
         <View className="gap-2">
           <Text className="text-xs font-medium text-slate-500">Start</Text>
           <View className="flex-row gap-2">
-            <Pressable className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3" onPress={() => setActivePicker({ target: 'start', mode: 'date' })}>
+            <Pressable
+              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3"
+              onPress={() => nativePickerAvailable && setActivePicker({ target: 'start', mode: 'date' })}
+            >
               <Text className="text-slate-800">📅 {formatDisplayDate(draft.startTime)}</Text>
             </Pressable>
-            <Pressable className="w-36 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3" onPress={() => setActivePicker({ target: 'start', mode: 'time' })}>
+            <Pressable
+              className="w-36 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3"
+              onPress={() => nativePickerAvailable && setActivePicker({ target: 'start', mode: 'time' })}
+            >
               <Text className="text-slate-800">🕒 {formatDisplayTime(draft.startTime)}</Text>
             </Pressable>
           </View>
+
+          {!nativePickerAvailable && (
+            <View className="flex-row gap-2">
+              <TextInput className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2" placeholder="YYYY-MM-DD" value={getDatePart(draft.startTime)} onChangeText={(nextDate) => onDraft({ ...draft, startTime: setDatePart(draft.startTime, nextDate) })} />
+              <TextInput className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2" placeholder="HH:MM" value={getTimePart(draft.startTime)} onChangeText={(nextTime) => onDraft({ ...draft, startTime: setTimePart(draft.startTime, nextTime) })} />
+            </View>
+          )}
         </View>
 
         <View className="gap-2">
           <Text className="text-xs font-medium text-slate-500">End</Text>
           <View className="flex-row gap-2">
-            <Pressable className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3" onPress={() => setActivePicker({ target: 'end', mode: 'date' })}>
+            <Pressable
+              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3"
+              onPress={() => nativePickerAvailable && setActivePicker({ target: 'end', mode: 'date' })}
+            >
               <Text className="text-slate-800">📅 {formatDisplayDate(draft.endTime)}</Text>
             </Pressable>
-            <Pressable className="w-36 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3" onPress={() => setActivePicker({ target: 'end', mode: 'time' })}>
+            <Pressable
+              className="w-36 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3"
+              onPress={() => nativePickerAvailable && setActivePicker({ target: 'end', mode: 'time' })}
+            >
               <Text className="text-slate-800">🕒 {formatDisplayTime(draft.endTime)}</Text>
             </Pressable>
           </View>
+
+          {!nativePickerAvailable && (
+            <View className="flex-row gap-2">
+              <TextInput className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2" placeholder="YYYY-MM-DD" value={getDatePart(draft.endTime)} onChangeText={(nextDate) => onDraft({ ...draft, endTime: setDatePart(draft.endTime, nextDate) })} />
+              <TextInput className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2" placeholder="HH:MM" value={getTimePart(draft.endTime)} onChangeText={(nextTime) => onDraft({ ...draft, endTime: setTimePart(draft.endTime, nextTime) })} />
+            </View>
+          )}
         </View>
 
-        {!!activePicker && (
+        {!!activePicker && !!DateTimePicker && (
           <View className="rounded-lg border border-blue-100 bg-blue-50 p-2">
             <DateTimePicker
               value={new Date(pickerIsoValue)}
@@ -201,6 +284,10 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
               </Pressable>
             )}
           </View>
+        )}
+
+        {!nativePickerAvailable && (
+          <Text className="text-xs text-amber-700">Native date picker not available in this build. Using manual date/time fields.</Text>
         )}
       </View>
 
