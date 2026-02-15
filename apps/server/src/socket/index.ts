@@ -43,20 +43,22 @@ export const configureSockets = (
             return;
           }
           const event = await Event.findById(eventId)
-            .select("_id acceptedMembers")
+            .select("_id type acceptedMembers")
             .lean();
           if (!event) {
             callback?.({ error: "Event not found" });
             return;
           }
-          const accepted = await isAcceptedMember(
-            eventId,
-            userId,
-            event.acceptedMembers,
-          );
-          if (!accepted) {
-            callback?.({ error: "Forbidden" });
-            return;
+          if (event.type === "private") {
+            const accepted = await isAcceptedMember(
+              eventId,
+              userId,
+              event.acceptedMembers,
+            );
+            if (!accepted) {
+              callback?.({ error: "Forbidden" });
+              return;
+            }
           }
           socket.join(eventId);
           callback?.({ ok: true });
@@ -77,9 +79,22 @@ export const configureSockets = (
           return;
         }
 
-        const accepted = await isAcceptedMember(eventId, userId);
-        if (!accepted) {
+        const event = await Event.findById(eventId)
+          .select("_id type acceptedMembers")
+          .lean();
+        if (!event) {
           return;
+        }
+
+        if (event.type === "private") {
+          const accepted = await isAcceptedMember(
+            eventId,
+            userId,
+            event.acceptedMembers,
+          );
+          if (!accepted) {
+            return;
+          }
         }
 
         const message = await EventMessage.create({
@@ -95,6 +110,7 @@ export const configureSockets = (
           eventId,
           text: message.text,
           createdAt: message.createdAt,
+          createdBy: userId,
           displayName,
         };
 

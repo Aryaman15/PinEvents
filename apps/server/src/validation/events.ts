@@ -14,6 +14,7 @@ export const createEventSchema = z.object({
   type: z.enum(["public", "private"]),
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
+  imageUrls: z.array(z.string().url()).max(4).optional(),
   location: locationSchema,
 });
 
