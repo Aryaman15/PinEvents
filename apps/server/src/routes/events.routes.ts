@@ -13,6 +13,7 @@ import {
   listMessages,
   requestJoin,
   uploadEventImages,
+  sendMessage
 } from "../controllers/eventsController";
 import { requireAuth } from "../middleware/requireAuth";
 
