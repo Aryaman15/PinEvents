@@ -1,65 +1,90 @@
-import { StatusBar } from 'expo-status-bar';
-import * as SecureStore from 'expo-secure-store';
-import * as Location from 'expo-location';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Share, View } from 'react-native';
-import { io, Socket } from 'socket.io-client';
-import type { Feature, FeatureCollection, Point } from 'geojson';
-import MapLibreGL from '@maplibre/maplibre-react-native';
-import { AuthScreen } from './src/components/AuthScreen';
-import { CreateEventScreen } from './src/components/CreateEventScreen';
-import { MapHomeScreen } from './src/components/MapHomeScreen';
-import { ProfileEditorScreen } from './src/components/ProfileEditorScreen';
-import { ProfileScreen } from './src/components/ProfileScreen';
-import { AuthMode, EventDetail, EventDraft, EventMessage, EventPin, JoinRequest, Profile, ViewerInfo } from './src/types/app';
+import { StatusBar } from "expo-status-bar";
+import * as SecureStore from "expo-secure-store";
+import * as Location from "expo-location";
+import * as ImagePicker from "expo-image-picker";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Share, View } from "react-native";
+import { io, Socket } from "socket.io-client";
+import type { Feature, FeatureCollection, Point } from "geojson";
+import MapLibreGL from "@maplibre/maplibre-react-native";
+import { AuthScreen } from "./src/components/AuthScreen";
+import { CreateEventScreen } from "./src/components/CreateEventScreen";
+import { MapHomeScreen } from "./src/components/MapHomeScreen";
+import { ProfileEditorScreen } from "./src/components/ProfileEditorScreen";
+import { ProfileScreen } from "./src/components/ProfileScreen";
+import {
+  AuthMode,
+  EventDetail,
+  EventDraft,
+  EventMessage,
+  EventPin,
+  JoinRequest,
+  Profile,
+  ViewerInfo,
+} from "./src/types/app";
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
 const mapStyleUrl = process.env.EXPO_PUBLIC_MAP_STYLE_URL_2;
 const initialCenter: [number, number] = [-122.4194, 37.7749];
-const tokenKey = 'authToken';
+const tokenKey = "authToken";
 
-if (!apiUrl) throw new Error('Missing EXPO_PUBLIC_API_URL in .env');
-if (!mapStyleUrl) throw new Error('Missing EXPO_PUBLIC_MAP_STYLE_URL_2 in .env');
+if (!apiUrl) throw new Error("Missing EXPO_PUBLIC_API_URL in .env");
+if (!mapStyleUrl)
+  throw new Error("Missing EXPO_PUBLIC_MAP_STYLE_URL_2 in .env");
 
-const emptyProfile: Profile = { id: '', displayName: '', bio: '', interests: [], avatarUrl: '' };
+const emptyProfile: Profile = {
+  id: "",
+  displayName: "",
+  bio: "",
+  interests: [],
+  avatarUrl: "",
+};
 
 export default function App() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileDraft, setProfileDraft] = useState<Profile>(emptyProfile);
   const [isLoading, setIsLoading] = useState(true);
-  const [authMode, setAuthMode] = useState<AuthMode>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
-  const [interestInput, setInterestInput] = useState('');
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [interestInput, setInterestInput] = useState("");
 
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [showProfileScreen, setShowProfileScreen] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
   const [showEventDetails, setShowEventDetails] = useState(false);
 
-  const [centerCoordinate, setCenterCoordinate] = useState<[number, number]>(initialCenter);
+  const [centerCoordinate, setCenterCoordinate] =
+    useState<[number, number]>(initialCenter);
   const [events, setEvents] = useState<EventPin[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [selectedEventDetail, setSelectedEventDetail] = useState<EventDetail | null>(null);
-  const [selectedEventRequests, setSelectedEventRequests] = useState<JoinRequest[]>([]);
+  const [selectedEventDetail, setSelectedEventDetail] =
+    useState<EventDetail | null>(null);
+  const [selectedEventRequests, setSelectedEventRequests] = useState<
+    JoinRequest[]
+  >([]);
   const [isSubmittingJoinRequest, setIsSubmittingJoinRequest] = useState(false);
   const [isDeletingEvent, setIsDeletingEvent] = useState(false);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchCategory, setSearchCategory] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchCategory, setSearchCategory] = useState("");
   const [customCategories, setCustomCategories] = useState<string[]>([]);
 
   const [chatEventId, setChatEventId] = useState<string | null>(null);
   const [showChatScreen, setShowChatScreen] = useState(false);
   const [chatMessages, setChatMessages] = useState<EventMessage[]>([]);
-  const [chatDraft, setChatDraft] = useState('');
+  const [chatDraft, setChatDraft] = useState("");
 
-  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [newCategoryInput, setNewCategoryInput] = useState("");
   const [eventDraft, setEventDraft] = useState<EventDraft>({
-    title: '', description: '', category: '', type: 'public',
+    title: "",
+    description: "",
+    category: "",
+    type: "public",
     startTime: new Date().toISOString(),
     endTime: new Date(Date.now() + 3600_000).toISOString(),
     imageUrls: [],
@@ -67,22 +92,40 @@ export default function App() {
 
   const socketRef = useRef<Socket | null>(null);
 
-  const needsProfileSetup = useMemo(() => Boolean(authToken && profile && !profile.displayName.trim()), [authToken, profile]);
+  const needsProfileSetup = useMemo(
+    () => Boolean(authToken && profile && !profile.displayName.trim()),
+    [authToken, profile],
+  );
 
   const availableCategories = useMemo(() => {
-    const eventCategories = events.map((event) => event.category).filter((c) => c.trim());
-    return Array.from(new Set([...eventCategories, ...customCategories])).sort((a, b) => a.localeCompare(b));
+    const eventCategories = events
+      .map((event) => event.category)
+      .filter((c) => c.trim());
+    return Array.from(new Set([...eventCategories, ...customCategories])).sort(
+      (a, b) => a.localeCompare(b),
+    );
   }, [events, customCategories]);
 
-  const eventFeatures = useMemo<FeatureCollection<Point>>(() => ({
-    type: 'FeatureCollection',
-    features: events.map((event): Feature<Point> => ({
-      type: 'Feature',
-      id: event.id,
-      properties: { id: event.id, isPrivate: event.type === 'private' },
-      geometry: { type: 'Point', coordinates: event.location?.coordinates ?? event.redactedLocation?.coordinates ?? initialCenter },
-    })),
-  }), [events]);
+  const eventFeatures = useMemo<FeatureCollection<Point>>(
+    () => ({
+      type: "FeatureCollection",
+      features: events.map(
+        (event): Feature<Point> => ({
+          type: "Feature",
+          id: event.id,
+          properties: { id: event.id, isPrivate: event.type === "private" },
+          geometry: {
+            type: "Point",
+            coordinates:
+              event.location?.coordinates ??
+              event.redactedLocation?.coordinates ??
+              initialCenter,
+          },
+        }),
+      ),
+    }),
+    [events],
+  );
 
   useEffect(() => {
     SecureStore.getItemAsync(tokenKey)
@@ -97,32 +140,41 @@ export default function App() {
     if (!authToken) return;
     Location.requestForegroundPermissionsAsync()
       .then(async ({ status }) => {
-        if (status !== 'granted') return;
-        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
-        setCenterCoordinate([position.coords.longitude, position.coords.latitude]);
+        if (status !== "granted") return;
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Highest,
+        });
+        setCenterCoordinate([
+          position.coords.longitude,
+          position.coords.latitude,
+        ]);
       })
       .catch(() => undefined);
   }, [authToken]);
 
   useEffect(() => {
     if (!authToken) return;
-    loadEvents(authToken, centerCoordinate, searchQuery, searchCategory).catch(() => undefined);
+    loadEvents(authToken, centerCoordinate, searchQuery, searchCategory).catch(
+      () => undefined,
+    );
   }, [authToken, centerCoordinate, searchQuery, searchCategory]);
 
   useEffect(() => {
     if (!authToken || !selectedEventId) return;
-    fetch(`${apiUrl}/events/${selectedEventId}`, { headers: { Authorization: `Bearer ${authToken}` } })
+    fetch(`${apiUrl}/events/${selectedEventId}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    })
       .then(async (res) => {
         if (res.status === 401) {
-          setErrorMessage('Session expired. Please log in again.');
+          setErrorMessage("Session expired. Please log in again.");
           await handleLogout();
           return;
         }
         if (!res.ok) throw new Error();
-        const data = await res.json() as { event?: EventDetail };
+        const data = (await res.json()) as { event?: EventDetail };
         setSelectedEventDetail(data.event ?? null);
       })
-      .catch(() => setErrorMessage('Unable to load event details.'));
+      .catch(() => setErrorMessage("Unable to load event details."));
   }, [authToken, selectedEventId]);
 
   useEffect(() => {
@@ -130,8 +182,15 @@ export default function App() {
     socketRef.current?.disconnect();
     const socket = io(apiUrl, { auth: { token: authToken } });
     socketRef.current = socket;
-    socket.on('message', (message: EventMessage) => setChatMessages((prev) => [...prev, message]));
-    socket.emit('join', chatEventId, (response: { error?: string }) => response?.error && setErrorMessage(response.error));
+    socket.on("message", (message: EventMessage) =>
+      setChatMessages((prev) => [...prev, message]),
+    );
+    socket.emit(
+      "join",
+      chatEventId,
+      (response: { error?: string }) =>
+        response?.error && setErrorMessage(response.error),
+    );
     return () => {
       socket.disconnect();
       socketRef.current = null;
@@ -139,27 +198,29 @@ export default function App() {
   }, [showChatScreen, authToken, chatEventId]);
 
   useEffect(() => {
-    if (selectedEventDetail?.viewer?.role === 'admin') {
+    if (selectedEventDetail?.viewer?.role === "admin") {
       loadJoinRequests(selectedEventDetail.id).catch(() => undefined);
     }
   }, [selectedEventDetail?.id, selectedEventDetail?.viewer?.role]);
 
   const loadProfile = async (token: string) => {
     try {
-      const response = await fetch(`${apiUrl}/me`, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await fetch(`${apiUrl}/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (response.status === 401) {
-        setErrorMessage('Session expired. Please log in again.');
+        setErrorMessage("Session expired. Please log in again.");
         await handleLogout();
         return false;
       }
       if (!response.ok) {
-        setErrorMessage('Unable to load profile. Please log in again.');
+        setErrorMessage("Unable to load profile. Please log in again.");
         await handleLogout();
         return false;
       }
-      const data = await response.json() as { user?: Profile };
+      const data = (await response.json()) as { user?: Profile };
       if (!data.user) {
-        setErrorMessage('Unable to load profile. Please log in again.');
+        setErrorMessage("Unable to load profile. Please log in again.");
         await handleLogout();
         return false;
       }
@@ -167,7 +228,7 @@ export default function App() {
       setProfileDraft(data.user);
       return true;
     } catch {
-      setErrorMessage('Unable to reach the server.');
+      setErrorMessage("Unable to reach the server.");
       return false;
     }
   };
@@ -182,13 +243,15 @@ export default function App() {
   };
 
   const handleAuth = async () => {
-    setErrorMessage('');
+    setErrorMessage("");
     const response = await fetch(`${apiUrl}/auth/${authMode}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
     });
-    if (!response.ok) return setErrorMessage('Authentication failed.');
-    const data = await response.json() as { token?: string };
-    if (!data.token) return setErrorMessage('Missing token in response.');
+    if (!response.ok) return setErrorMessage("Authentication failed.");
+    const data = (await response.json()) as { token?: string };
+    if (!data.token) return setErrorMessage("Missing token in response.");
     await SecureStore.setItemAsync(tokenKey, data.token);
     setAuthToken(data.token);
     await loadProfile(data.token);
@@ -197,68 +260,155 @@ export default function App() {
   const handleSaveProfile = async () => {
     if (!authToken) return;
     const response = await fetch(`${apiUrl}/me`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
       body: JSON.stringify(profileDraft),
     });
     if (response.status === 401) {
-      setErrorMessage('Session expired. Please log in again.');
+      setErrorMessage("Session expired. Please log in again.");
       await handleLogout();
       return;
     }
-    if (!response.ok) return setErrorMessage('Unable to save profile.');
-    const data = await response.json() as { user?: Profile };
+    if (!response.ok) return setErrorMessage("Unable to save profile.");
+    const data = (await response.json()) as { user?: Profile };
     if (!data.user) return;
     setProfile(data.user);
     setProfileDraft(data.user);
     setShowProfileEditor(false);
   };
 
-  const loadEvents = async (token: string, coordinate: [number, number], query = '', category = '') => {
+  const loadEvents = async (
+    token: string,
+    coordinate: [number, number],
+    query = "",
+    category = "",
+  ) => {
     setIsLoadingEvents(true);
-    const params = new URLSearchParams({ lat: String(coordinate[1]), lng: String(coordinate[0]), radiusKm: '5' });
-    if (query.trim()) params.set('q', query.trim());
-    if (category.trim()) params.set('category', category.trim());
-    const response = await fetch(`${apiUrl}/events/near?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+    const params = new URLSearchParams({
+      lat: String(coordinate[1]),
+      lng: String(coordinate[0]),
+      radiusKm: "5",
+    });
+    if (query.trim()) params.set("q", query.trim());
+    if (category.trim()) params.set("category", category.trim());
+    const response = await fetch(`${apiUrl}/events/near?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     if (response.status === 401) {
-      setErrorMessage('Session expired. Please log in again.');
+      setErrorMessage("Session expired. Please log in again.");
       await handleLogout();
       setIsLoadingEvents(false);
       return;
     }
     if (!response.ok) {
       setIsLoadingEvents(false);
-      return setErrorMessage('Unable to load nearby events.');
+      return setErrorMessage("Unable to load nearby events.");
     }
-    const data = await response.json() as { events?: EventPin[] };
+    const data = (await response.json()) as { events?: EventPin[] };
     setEvents(data.events ?? []);
     setIsLoadingEvents(false);
+  };
+
+  const handlePickImages = async () => {
+    if (!authToken) return;
+    const remainingSlots = 4 - eventDraft.imageUrls.length;
+    if (remainingSlots <= 0) return;
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permission.status !== "granted") {
+      setErrorMessage("Please allow photo access to upload event images.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsMultipleSelection: true,
+      selectionLimit: remainingSlots,
+    });
+
+    if (result.canceled || !result.assets.length) return;
+
+    const formData = new FormData();
+    result.assets.slice(0, remainingSlots).forEach((asset, index) => {
+      const extension = (asset.uri.split(".").pop() || "jpg").toLowerCase();
+      const type = asset.mimeType || `image/${extension}`;
+      formData.append("images", {
+        uri: asset.uri,
+        name: `event-image-${Date.now()}-${index}.${extension}`,
+        type,
+      } as unknown as Blob);
+    });
+
+    setIsUploadingImages(true);
+    const response = await fetch(`${apiUrl}/events/uploads`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${authToken}` },
+      body: formData,
+    });
+
+    if (response.status === 401) {
+      setErrorMessage("Session expired. Please log in again.");
+      setIsUploadingImages(false);
+      await handleLogout();
+      return;
+    }
+
+    if (!response.ok) {
+      setIsUploadingImages(false);
+      return setErrorMessage("Unable to upload images.");
+    }
+
+    const data = (await response.json()) as { imageUrls?: string[] };
+    const uploadedUrls = data.imageUrls ?? [];
+    setEventDraft((prev) => ({
+      ...prev,
+      imageUrls: [...prev.imageUrls, ...uploadedUrls].slice(0, 4),
+    }));
+    setIsUploadingImages(false);
   };
 
   const handleCreateEvent = async () => {
     if (!authToken) return;
     const finalCategory = newCategoryInput.trim() || eventDraft.category.trim();
-    if (!finalCategory) return setErrorMessage('Please choose a category.');
+    if (!finalCategory) return setErrorMessage("Please choose a category.");
 
-    if (!availableCategories.some((c) => c.toLowerCase() === finalCategory.toLowerCase())) {
+    if (
+      !availableCategories.some(
+        (c) => c.toLowerCase() === finalCategory.toLowerCase(),
+      )
+    ) {
       setCustomCategories((prev) => [...prev, finalCategory]);
     }
 
     const response = await fetch(`${apiUrl}/events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-      body: JSON.stringify({ ...eventDraft, category: finalCategory, imageUrls: eventDraft.imageUrls.slice(0, 4), location: { type: 'Point', coordinates: centerCoordinate } }),
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        ...eventDraft,
+        category: finalCategory,
+        location: { type: "Point", coordinates: centerCoordinate },
+      }),
     });
     if (response.status === 401) {
-      setErrorMessage('Session expired. Please log in again.');
+      setErrorMessage("Session expired. Please log in again.");
       await handleLogout();
       return;
     }
-    if (!response.ok) return setErrorMessage('Unable to create event.');
+    if (!response.ok) return setErrorMessage("Unable to create event.");
     setShowCreateEvent(false);
-    setNewCategoryInput('');
+    setNewCategoryInput("");
     setEventDraft({
-      title: '', description: '', category: '', type: 'public',
+      title: "",
+      description: "",
+      category: "",
+      type: "public",
       startTime: new Date().toISOString(),
       endTime: new Date(Date.now() + 3600_000).toISOString(),
       imageUrls: [],
@@ -270,18 +420,18 @@ export default function App() {
     if (!authToken || !selectedEventDetail) return;
     setIsDeletingEvent(true);
     const response = await fetch(`${apiUrl}/events/${selectedEventDetail.id}`, {
-      method: 'DELETE',
+      method: "DELETE",
       headers: { Authorization: `Bearer ${authToken}` },
     });
     if (response.status === 401) {
-      setErrorMessage('Session expired. Please log in again.');
+      setErrorMessage("Session expired. Please log in again.");
       setIsDeletingEvent(false);
       await handleLogout();
       return;
     }
     if (!response.ok) {
       setIsDeletingEvent(false);
-      return setErrorMessage('Unable to delete event.');
+      return setErrorMessage("Unable to delete event.");
     }
     setShowEventDetails(false);
     setSelectedEventId(null);
@@ -293,71 +443,103 @@ export default function App() {
   const handleRequestJoin = async () => {
     if (!authToken || !selectedEventDetail) return;
     setIsSubmittingJoinRequest(true);
-    const response = await fetch(`${apiUrl}/events/${selectedEventDetail.id}/join`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-    });
+    const response = await fetch(
+      `${apiUrl}/events/${selectedEventDetail.id}/join`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+      },
+    );
     if (response.status === 401) {
-      setErrorMessage('Session expired. Please log in again.');
+      setErrorMessage("Session expired. Please log in again.");
       setIsSubmittingJoinRequest(false);
       await handleLogout();
       return;
     }
     if (!response.ok) {
       setIsSubmittingJoinRequest(false);
-      return setErrorMessage('Unable to request access.');
+      return setErrorMessage("Unable to request access.");
     }
-    const data = await response.json() as { joinRequest?: { status?: string } };
-    setSelectedEventDetail((prev) => prev ? {
-      ...prev,
-      viewer: {
-        isMember: prev.viewer?.isMember ?? false,
-        role: prev.viewer?.role ?? null,
-        status: prev.viewer?.status ?? null,
-        joinRequestStatus: (data.joinRequest?.status as ViewerInfo['joinRequestStatus']) ?? 'pending',
-      },
-    } : prev);
+    const data = (await response.json()) as {
+      joinRequest?: { status?: string };
+    };
+    setSelectedEventDetail((prev) =>
+      prev
+        ? {
+            ...prev,
+            viewer: {
+              isMember: prev.viewer?.isMember ?? false,
+              role: prev.viewer?.role ?? null,
+              status: prev.viewer?.status ?? null,
+              joinRequestStatus:
+                (data.joinRequest?.status as ViewerInfo["joinRequestStatus"]) ??
+                "pending",
+            },
+          }
+        : prev,
+    );
     setIsSubmittingJoinRequest(false);
   };
 
   const loadJoinRequests = async (eventId: string) => {
     if (!authToken) return;
-    const response = await fetch(`${apiUrl}/events/${eventId}/requests`, { headers: { Authorization: `Bearer ${authToken}` } });
+    const response = await fetch(`${apiUrl}/events/${eventId}/requests`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
     if (response.status === 401) {
-      setErrorMessage('Session expired. Please log in again.');
+      setErrorMessage("Session expired. Please log in again.");
       await handleLogout();
       return;
     }
     if (!response.ok) return;
-    const data = await response.json() as { requests?: JoinRequest[] };
+    const data = (await response.json()) as { requests?: JoinRequest[] };
     setSelectedEventRequests(data.requests ?? []);
   };
 
-  const handleRequestDecision = async (requestId: string, action: 'approved' | 'rejected') => {
+  const handleRequestDecision = async (
+    requestId: string,
+    action: "approved" | "rejected",
+  ) => {
     if (!authToken || !selectedEventDetail) return;
-    const response = await fetch(`${apiUrl}/events/${selectedEventDetail.id}/requests/${requestId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-      body: JSON.stringify({ status: action }),
-    });
+    const response = await fetch(
+      `${apiUrl}/events/${selectedEventDetail.id}/requests/${requestId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ status: action }),
+      },
+    );
     if (response.status === 401) {
-      setErrorMessage('Session expired. Please log in again.');
+      setErrorMessage("Session expired. Please log in again.");
       await handleLogout();
       return;
     }
-    if (!response.ok) return setErrorMessage('Unable to update request.');
-    setSelectedEventRequests((prev) => prev.map((request) => request.id === requestId ? { ...request, status: action } : request));
+    if (!response.ok) return setErrorMessage("Unable to update request.");
+    setSelectedEventRequests((prev) =>
+      prev.map((request) =>
+        request.id === requestId ? { ...request, status: action } : request,
+      ),
+    );
   };
 
   const loadEventMessages = async (eventId: string) => {
     if (!authToken) return;
-    const response = await fetch(`${apiUrl}/events/${eventId}/messages`, { headers: { Authorization: `Bearer ${authToken}` } });
+    const response = await fetch(`${apiUrl}/events/${eventId}/messages`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
     if (response.status === 401) {
-      setErrorMessage('Session expired. Please log in again.');
+      setErrorMessage("Session expired. Please log in again.");
       await handleLogout();
       return;
     }
-    if (!response.ok) return setErrorMessage('Unable to load chat history.');
-    const data = await response.json() as { messages?: EventMessage[] };
+    if (!response.ok) return setErrorMessage("Unable to load chat history.");
+    const data = (await response.json()) as { messages?: EventMessage[] };
     setChatMessages(data.messages ?? []);
   };
 
@@ -376,28 +558,37 @@ export default function App() {
     setShowChatScreen(false);
     setChatEventId(null);
     setChatMessages([]);
-    setChatDraft('');
+    setChatDraft("");
   };
 
   const handleAddInterest = () => {
     const trimmed = interestInput.trim();
-    if (!trimmed || profileDraft.interests.includes(trimmed)) return setInterestInput('');
-    setProfileDraft((prev) => ({ ...prev, interests: [...prev.interests, trimmed] }));
-    setInterestInput('');
+    if (!trimmed || profileDraft.interests.includes(trimmed))
+      return setInterestInput("");
+    setProfileDraft((prev) => ({
+      ...prev,
+      interests: [...prev.interests, trimmed],
+    }));
+    setInterestInput("");
   };
 
   const handleShareEvent = async (eventToShare: EventPin | EventDetail) => {
     try {
-      await Share.share({ message: `${eventToShare.title}\n${eventToShare.description}\nCategory: ${eventToShare.category}` });
+      await Share.share({
+        message: `${eventToShare.title}\n${eventToShare.description}\nCategory: ${eventToShare.category}`,
+      });
     } catch {
-      setErrorMessage('Unable to share event.');
+      setErrorMessage("Unable to share event.");
     }
   };
 
   const handleSendMessage = () => {
     if (!chatDraft.trim() || !chatEventId) return;
-    socketRef.current?.emit('message', { eventId: chatEventId, text: chatDraft });
-    setChatDraft('');
+    socketRef.current?.emit("message", {
+      eventId: chatEventId,
+      text: chatDraft,
+    });
+    setChatDraft("");
   };
 
   const handleEventPress = (event: MapLibreGL.OnPressEvent) => {
@@ -408,22 +599,105 @@ export default function App() {
     }
   };
 
-  if (isLoading) return <View className="flex-1 items-center justify-center"><ActivityIndicator size="large" /></View>;
+  if (isLoading)
+    return (
+      <View className="flex-1 items-center justify-center">
+        <ActivityIndicator size="large" />
+      </View>
+    );
 
   if (!authToken) {
-    return <><AuthScreen authMode={authMode} email={email} password={password} errorMessage={errorMessage} onChangeEmail={setEmail} onChangePassword={setPassword} onSubmit={() => handleAuth().catch(() => setErrorMessage('Unable to reach the server.'))} onToggleMode={() => setAuthMode((m) => m === 'login' ? 'signup' : 'login')} /><StatusBar style="dark" /></>;
+    return (
+      <>
+        <AuthScreen
+          authMode={authMode}
+          email={email}
+          password={password}
+          errorMessage={errorMessage}
+          onChangeEmail={setEmail}
+          onChangePassword={setPassword}
+          onSubmit={() =>
+            handleAuth().catch(() =>
+              setErrorMessage("Unable to reach the server."),
+            )
+          }
+          onToggleMode={() =>
+            setAuthMode((m) => (m === "login" ? "signup" : "login"))
+          }
+        />
+        <StatusBar style="dark" />
+      </>
+    );
   }
 
   if (needsProfileSetup || showProfileEditor) {
-    return <><ProfileEditorScreen draft={profileDraft} interestInput={interestInput} needsSetup={needsProfileSetup} onUpdateDraft={setProfileDraft} onInterestInput={setInterestInput} onAddInterest={handleAddInterest} onRemoveInterest={(interest) => setProfileDraft((prev) => ({ ...prev, interests: prev.interests.filter((i) => i !== interest) }))} onSave={() => handleSaveProfile().catch(() => setErrorMessage('Unable to reach the server.'))} /><StatusBar style="dark" /></>;
+    return (
+      <>
+        <ProfileEditorScreen
+          draft={profileDraft}
+          interestInput={interestInput}
+          needsSetup={needsProfileSetup}
+          onUpdateDraft={setProfileDraft}
+          onInterestInput={setInterestInput}
+          onAddInterest={handleAddInterest}
+          onRemoveInterest={(interest) =>
+            setProfileDraft((prev) => ({
+              ...prev,
+              interests: prev.interests.filter((i) => i !== interest),
+            }))
+          }
+          onSave={() =>
+            handleSaveProfile().catch(() =>
+              setErrorMessage("Unable to reach the server."),
+            )
+          }
+        />
+        <StatusBar style="dark" />
+      </>
+    );
   }
 
   if (showProfileScreen && profile) {
-    return <><ProfileScreen profile={profile} onEdit={() => setShowProfileEditor(true)} onLogout={() => handleLogout().catch(() => setErrorMessage('Unable to log out.'))} onBack={() => setShowProfileScreen(false)} /><StatusBar style="dark" /></>;
+    return (
+      <>
+        <ProfileScreen
+          profile={profile}
+          onEdit={() => setShowProfileEditor(true)}
+          onLogout={() =>
+            handleLogout().catch(() => setErrorMessage("Unable to log out."))
+          }
+          onBack={() => setShowProfileScreen(false)}
+        />
+        <StatusBar style="dark" />
+      </>
+    );
   }
 
   if (showCreateEvent) {
-    return <><CreateEventScreen draft={eventDraft} categoryInput={newCategoryInput} categories={availableCategories} onDraft={setEventDraft} onCategoryInput={setNewCategoryInput} onCreate={() => handleCreateEvent().catch(() => setErrorMessage('Unable to reach the server.'))} onBack={() => setShowCreateEvent(false)} /><StatusBar style="dark" /></>;
+    return (
+      <>
+        <CreateEventScreen
+          draft={eventDraft}
+          categoryInput={newCategoryInput}
+          categories={availableCategories}
+          isUploadingImages={isUploadingImages}
+          onDraft={setEventDraft}
+          onCategoryInput={setNewCategoryInput}
+          onPickImages={() =>
+            handlePickImages().catch(() =>
+              setErrorMessage("Unable to upload images."),
+            )
+          }
+          onCreate={() =>
+            handleCreateEvent().catch(() =>
+              setErrorMessage("Unable to reach the server."),
+            )
+          }
+          onBack={() => setShowCreateEvent(false)}
+        />
+        <StatusBar style="dark" />
+      </>
+    );
   }
 
   return (
@@ -447,23 +721,52 @@ export default function App() {
         isDeletingEvent={isDeletingEvent}
         onSearchQuery={setSearchQuery}
         onSearchCategory={setSearchCategory}
-        onClearSearch={() => { setSearchQuery(''); setSearchCategory(''); }}
+        onClearSearch={() => {
+          setSearchQuery("");
+          setSearchCategory("");
+        }}
         onOpenCreate={() => setShowCreateEvent(true)}
-        onOpenProfile={() => handleOpenProfile().catch(() => setErrorMessage('Unable to load profile.'))}
+        onOpenProfile={() =>
+          handleOpenProfile().catch(() =>
+            setErrorMessage("Unable to load profile."),
+          )
+        }
         onEventPress={handleEventPress}
-        onRequestJoin={() => handleRequestJoin().catch(() => setErrorMessage('Unable to reach the server.'))}
-        onRequestDecision={(requestId, action) => handleRequestDecision(requestId, action).catch(() => setErrorMessage('Unable to reach the server.'))}
+        onRequestJoin={() =>
+          handleRequestJoin().catch(() =>
+            setErrorMessage("Unable to reach the server."),
+          )
+        }
+        onRequestDecision={(requestId, action) =>
+          handleRequestDecision(requestId, action).catch(() =>
+            setErrorMessage("Unable to reach the server."),
+          )
+        }
         onOpenChat={() => {
           if (!selectedEventDetail) return;
           setChatEventId(selectedEventDetail.id);
           setShowChatScreen(true);
-          loadEventMessages(selectedEventDetail.id).catch(() => setErrorMessage('Unable to reach the server.'));
+          loadEventMessages(selectedEventDetail.id).catch(() =>
+            setErrorMessage("Unable to reach the server."),
+          );
         }}
         onOpenEventDetails={() => setShowEventDetails(true)}
         onCloseEventDetails={() => setShowEventDetails(false)}
-        onDeleteEvent={() => handleDeleteEvent().catch(() => setErrorMessage('Unable to delete event.'))}
-        onCloseDetail={() => { setSelectedEventId(null); setSelectedEventDetail(null); setShowEventDetails(false); }}
-        onShareEvent={(eventToShare) => handleShareEvent(eventToShare).catch(() => setErrorMessage('Unable to share event.'))}
+        onDeleteEvent={() =>
+          handleDeleteEvent().catch(() =>
+            setErrorMessage("Unable to delete event."),
+          )
+        }
+        onCloseDetail={() => {
+          setSelectedEventId(null);
+          setSelectedEventDetail(null);
+          setShowEventDetails(false);
+        }}
+        onShareEvent={(eventToShare) =>
+          handleShareEvent(eventToShare).catch(() =>
+            setErrorMessage("Unable to share event."),
+          )
+        }
         onCloseChat={() => setShowChatScreen(false)}
         onChatDraft={setChatDraft}
         onSendMessage={handleSendMessage}

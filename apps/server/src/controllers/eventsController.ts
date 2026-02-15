@@ -233,7 +233,6 @@ export const getEventById: RequestHandler = async (req, res) => {
   });
 };
 
-
 export const deleteEvent: RequestHandler = async (req, res) => {
   const paramsResult = eventIdParamSchema.safeParse(req.params);
   if (!paramsResult.success) {
@@ -264,6 +263,24 @@ export const deleteEvent: RequestHandler = async (req, res) => {
   ]);
 
   return res.status(200).json({ ok: true });
+};
+
+export const uploadEventImages: RequestHandler = async (req, res) => {
+  const userId = req.userId;
+
+  if (!userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+  if (!files.length) {
+    return res.status(400).json({ error: "No images uploaded" });
+  }
+
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const imageUrls = files.map((file) => `${baseUrl}/uploads/${file.filename}`);
+
+  return res.status(201).json({ imageUrls });
 };
 
 export const requestJoin: RequestHandler = async (req, res) => {
