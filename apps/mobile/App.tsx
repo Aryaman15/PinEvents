@@ -1,7 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import * as SecureStore from "expo-secure-store";
 import * as Location from "expo-location";
-import * as ImagePicker from "expo-image-picker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Share, View } from "react-native";
 import { io, Socket } from "socket.io-client";
@@ -316,6 +315,16 @@ export default function App() {
     if (!authToken) return;
     const remainingSlots = 4 - eventDraft.imageUrls.length;
     if (remainingSlots <= 0) return;
+
+    let ImagePicker: typeof import("expo-image-picker");
+    try {
+      ImagePicker = await import("expo-image-picker");
+    } catch {
+      setErrorMessage(
+        "Image picker is unavailable in this dev build. Rebuild the development client after installing expo-image-picker.",
+      );
+      return;
+    }
 
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permission.status !== "granted") {
