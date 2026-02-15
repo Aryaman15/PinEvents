@@ -710,6 +710,7 @@ export default function App() {
           categoryInput={newCategoryInput}
           categories={availableCategories}
           isUploadingImages={isUploadingImages}
+          errorMessage={errorMessage}
           onDraft={setEventDraft}
           onCategoryInput={setNewCategoryInput}
           onPickImages={() =>

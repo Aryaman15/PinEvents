@@ -14,6 +14,7 @@ type Props = {
   categoryInput: string;
   categories: string[];
   isUploadingImages: boolean;
+  errorMessage?: string;
   onDraft: (next: EventDraft) => void;
   onCategoryInput: (v: string) => void;
   onPickImages: () => void;
@@ -94,6 +95,7 @@ export function CreateEventScreen({
   categoryInput,
   categories,
   isUploadingImages,
+  errorMessage,
   onDraft,
   onCategoryInput,
   onPickImages,
@@ -197,6 +199,11 @@ export function CreateEventScreen({
       keyboardShouldPersistTaps="handled"
     >
       <Text className="text-2xl font-bold">Create event</Text>
+      {!!errorMessage && (
+        <View className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+          <Text className="text-sm text-red-700">{errorMessage}</Text>
+        </View>
+      )}
       <TextInput
         className="rounded-xl border border-slate-200 bg-white px-4 py-3"
         placeholder="Title"
