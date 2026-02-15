@@ -1,5 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import * as SecureStore from "expo-secure-store";
+import { NativeModulesProxy } from "expo-modules-core";
 import * as Location from "expo-location";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Share, View } from "react-native";
@@ -316,9 +317,17 @@ export default function App() {
     const remainingSlots = 4 - eventDraft.imageUrls.length;
     if (remainingSlots <= 0) return;
 
-    let ImagePicker: typeof import("expo-image-picker");
+    if (!NativeModulesProxy.ExponentImagePicker) {
+      setErrorMessage(
+        "This build does not include the image picker native module. Rebuild your dev client with: npx expo run:android",
+      );
+      return;
+    }
+
+    let ImagePicker: any;
     try {
-      ImagePicker = await import("expo-image-picker");
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      ImagePicker = require("expo-image-picker");
     } catch {
       setErrorMessage(
         "Image picker is unavailable in this dev build. Rebuild the development client after installing expo-image-picker.",
@@ -326,31 +335,42 @@ export default function App() {
       return;
     }
 
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (permission.status !== "granted") {
-      setErrorMessage("Please allow photo access to upload event images.");
+    let result: any;
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission.status !== "granted") {
+        setErrorMessage("Please allow photo access to upload event images.");
+        return;
+      }
+
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        allowsMultipleSelection: true,
+        selectionLimit: remainingSlots,
+      });
+    } catch {
+      setErrorMessage(
+        "Image picker failed to open. Please rebuild your development client and try again.",
+      );
       return;
     }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-      allowsMultipleSelection: true,
-      selectionLimit: remainingSlots,
-    });
 
     if (result.canceled || !result.assets.length) return;
 
     const formData = new FormData();
-    result.assets.slice(0, remainingSlots).forEach((asset, index) => {
-      const extension = (asset.uri.split(".").pop() || "jpg").toLowerCase();
-      const type = asset.mimeType || `image/${extension}`;
-      formData.append("images", {
-        uri: asset.uri,
-        name: `event-image-${Date.now()}-${index}.${extension}`,
-        type,
-      } as unknown as Blob);
-    });
+    result.assets
+      .slice(0, remainingSlots)
+      .forEach((asset: any, index: number) => {
+        const extension = (asset.uri.split(".").pop() || "jpg").toLowerCase();
+        const type = asset.mimeType || `image/${extension}`;
+        formData.append("images", {
+          uri: asset.uri,
+          name: `event-image-${Date.now()}-${index}.${extension}`,
+          type,
+        } as unknown as Blob);
+      });
 
     setIsUploadingImages(true);
     const response = await fetch(`${apiUrl}/events/uploads`, {
