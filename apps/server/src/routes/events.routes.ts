@@ -77,3 +77,4 @@ eventsRouter.patch(
 );
 
 eventsRouter.get("/:id/messages", requireAuth, listMessages);
+eventsRouter.post("/:id/messages", requireAuth, sendMessage);
