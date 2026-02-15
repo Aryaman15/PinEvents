@@ -69,6 +69,7 @@ export const createEvent: RequestHandler = async (req, res) => {
       location: event.location,
       createdBy: event.createdBy,
       createdAt: event.createdAt,
+      imageUrls: event.imageUrls ?? [],
     },
   });
 };
@@ -143,6 +144,7 @@ export const getEventsNear: RequestHandler = async (req, res) => {
       endTime: event.endTime,
       createdBy: event.createdBy,
       createdAt: event.createdAt,
+      imageUrls: event.imageUrls ?? [],
     };
 
     if (shouldReveal) {
@@ -212,6 +214,7 @@ export const getEventById: RequestHandler = async (req, res) => {
       endTime: event.endTime,
       createdBy: event.createdBy,
       createdAt: event.createdAt,
+      imageUrls: event.imageUrls ?? [],
       ...(shouldReveal
         ? { location: event.location }
         : {
@@ -228,6 +231,39 @@ export const getEventById: RequestHandler = async (req, res) => {
       },
     },
   });
+};
+
+
+export const deleteEvent: RequestHandler = async (req, res) => {
+  const paramsResult = eventIdParamSchema.safeParse(req.params);
+  if (!paramsResult.success) {
+    return res.status(400).json({ error: "Invalid event id" });
+  }
+
+  const { id } = paramsResult.data;
+  const userId = req.userId;
+
+  if (!userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const event = await Event.findById(id).lean<EventDocument>();
+  if (!event) {
+    return res.status(404).json({ error: "Event not found" });
+  }
+
+  if (event.createdBy.toString() !== userId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  await Promise.all([
+    Event.deleteOne({ _id: event._id }),
+    EventMember.deleteMany({ eventId: event._id }),
+    EventMessage.deleteMany({ eventId: event._id }),
+    JoinRequest.deleteMany({ eventId: event._id }),
+  ]);
+
+  return res.status(200).json({ ok: true });
 };
 
 export const requestJoin: RequestHandler = async (req, res) => {

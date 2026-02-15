@@ -2,6 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import {
   createEvent,
+  deleteEvent,
   getEventById,
   getEventsNear,
   handleJoinRequest,
@@ -29,6 +30,8 @@ eventsRouter.post("/", requireAuth, createLimiter, createEvent);
 eventsRouter.get("/near", getEventsNear);
 
 eventsRouter.get("/:id", getEventById);
+
+eventsRouter.delete("/:id", requireAuth, deleteEvent);
 
 eventsRouter.post("/:id/join", requireAuth, joinLimiter, requestJoin);
 

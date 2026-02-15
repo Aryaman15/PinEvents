@@ -18,6 +18,8 @@ export type EventPin = {
   startTime: string;
   endTime: string;
   createdAt: string;
+  createdBy: string;
+  imageUrls?: string[];
   location?: { type: 'Point'; coordinates: [number, number] };
   redactedLocation?: { type: 'Point'; coordinates: [number, number] };
 };
@@ -39,6 +41,8 @@ export type JoinRequest = {
   userId: string;
   status: 'pending' | 'approved' | 'rejected';
   createdAt: string;
+  createdBy: string;
+  imageUrls?: string[];
 };
 
 export type EventMessage = {
@@ -46,6 +50,8 @@ export type EventMessage = {
   eventId: string;
   text: string;
   createdAt: string;
+  createdBy: string;
+  imageUrls?: string[];
   displayName: string;
   isMine?: boolean;
 };
@@ -57,4 +63,5 @@ export type EventDraft = {
   type: EventPrivacy;
   startTime: string;
   endTime: string;
+  imageUrls: string[];
 };

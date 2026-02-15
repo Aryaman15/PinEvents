@@ -11,7 +11,7 @@ import { CreateEventScreen } from './src/components/CreateEventScreen';
 import { MapHomeScreen } from './src/components/MapHomeScreen';
 import { ProfileEditorScreen } from './src/components/ProfileEditorScreen';
 import { ProfileScreen } from './src/components/ProfileScreen';
-import { EventDetail, EventDraft, EventMessage, EventPin, JoinRequest, Profile, ViewerInfo, AuthMode } from './src/types/app';
+import { AuthMode, EventDetail, EventDraft, EventMessage, EventPin, JoinRequest, Profile, ViewerInfo } from './src/types/app';
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
 const mapStyleUrl = process.env.EXPO_PUBLIC_MAP_STYLE_URL_2;
@@ -37,6 +37,7 @@ export default function App() {
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [showProfileScreen, setShowProfileScreen] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
+  const [showEventDetails, setShowEventDetails] = useState(false);
 
   const [centerCoordinate, setCenterCoordinate] = useState<[number, number]>(initialCenter);
   const [events, setEvents] = useState<EventPin[]>([]);
@@ -45,6 +46,7 @@ export default function App() {
   const [selectedEventDetail, setSelectedEventDetail] = useState<EventDetail | null>(null);
   const [selectedEventRequests, setSelectedEventRequests] = useState<JoinRequest[]>([]);
   const [isSubmittingJoinRequest, setIsSubmittingJoinRequest] = useState(false);
+  const [isDeletingEvent, setIsDeletingEvent] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchCategory, setSearchCategory] = useState('');
@@ -60,6 +62,7 @@ export default function App() {
     title: '', description: '', category: '', type: 'public',
     startTime: new Date().toISOString(),
     endTime: new Date(Date.now() + 3600_000).toISOString(),
+    imageUrls: [],
   });
 
   const socketRef = useRef<Socket | null>(null);
@@ -244,7 +247,7 @@ export default function App() {
     const response = await fetch(`${apiUrl}/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-      body: JSON.stringify({ ...eventDraft, category: finalCategory, location: { type: 'Point', coordinates: centerCoordinate } }),
+      body: JSON.stringify({ ...eventDraft, category: finalCategory, imageUrls: eventDraft.imageUrls.slice(0, 4), location: { type: 'Point', coordinates: centerCoordinate } }),
     });
     if (response.status === 401) {
       setErrorMessage('Session expired. Please log in again.');
@@ -254,7 +257,37 @@ export default function App() {
     if (!response.ok) return setErrorMessage('Unable to create event.');
     setShowCreateEvent(false);
     setNewCategoryInput('');
+    setEventDraft({
+      title: '', description: '', category: '', type: 'public',
+      startTime: new Date().toISOString(),
+      endTime: new Date(Date.now() + 3600_000).toISOString(),
+      imageUrls: [],
+    });
     await loadEvents(authToken, centerCoordinate);
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!authToken || !selectedEventDetail) return;
+    setIsDeletingEvent(true);
+    const response = await fetch(`${apiUrl}/events/${selectedEventDetail.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (response.status === 401) {
+      setErrorMessage('Session expired. Please log in again.');
+      setIsDeletingEvent(false);
+      await handleLogout();
+      return;
+    }
+    if (!response.ok) {
+      setIsDeletingEvent(false);
+      return setErrorMessage('Unable to delete event.');
+    }
+    setShowEventDetails(false);
+    setSelectedEventId(null);
+    setSelectedEventDetail(null);
+    setIsDeletingEvent(false);
+    await loadEvents(authToken, centerCoordinate, searchQuery, searchCategory);
   };
 
   const handleRequestJoin = async () => {
@@ -336,6 +369,7 @@ export default function App() {
     setShowProfileEditor(false);
     setShowProfileScreen(false);
     setShowCreateEvent(false);
+    setShowEventDetails(false);
     setSelectedEventId(null);
     setSelectedEventDetail(null);
     setSelectedEventRequests([]);
@@ -368,12 +402,13 @@ export default function App() {
 
   const handleEventPress = (event: MapLibreGL.OnPressEvent) => {
     const eventId = event.features?.[0]?.properties?.id as string | undefined;
-    if (eventId) setSelectedEventId(eventId);
+    if (eventId) {
+      setSelectedEventId(eventId);
+      setShowEventDetails(false);
+    }
   };
 
-  if (isLoading) {
-    return <View className="flex-1 items-center justify-center"><ActivityIndicator size="large" /></View>;
-  }
+  if (isLoading) return <View className="flex-1 items-center justify-center"><ActivityIndicator size="large" /></View>;
 
   if (!authToken) {
     return <><AuthScreen authMode={authMode} email={email} password={password} errorMessage={errorMessage} onChangeEmail={setEmail} onChangePassword={setPassword} onSubmit={() => handleAuth().catch(() => setErrorMessage('Unable to reach the server.'))} onToggleMode={() => setAuthMode((m) => m === 'login' ? 'signup' : 'login')} /><StatusBar style="dark" /></>;
@@ -405,9 +440,11 @@ export default function App() {
         selectedEventDetail={selectedEventDetail}
         selectedEventRequests={selectedEventRequests}
         showChatScreen={showChatScreen}
+        showEventDetails={showEventDetails}
         chatMessages={chatMessages}
         chatDraft={chatDraft}
         isSubmittingJoinRequest={isSubmittingJoinRequest}
+        isDeletingEvent={isDeletingEvent}
         onSearchQuery={setSearchQuery}
         onSearchCategory={setSearchCategory}
         onClearSearch={() => { setSearchQuery(''); setSearchCategory(''); }}
@@ -422,7 +459,10 @@ export default function App() {
           setShowChatScreen(true);
           loadEventMessages(selectedEventDetail.id).catch(() => setErrorMessage('Unable to reach the server.'));
         }}
-        onCloseDetail={() => { setSelectedEventId(null); setSelectedEventDetail(null); }}
+        onOpenEventDetails={() => setShowEventDetails(true)}
+        onCloseEventDetails={() => setShowEventDetails(false)}
+        onDeleteEvent={() => handleDeleteEvent().catch(() => setErrorMessage('Unable to delete event.'))}
+        onCloseDetail={() => { setSelectedEventId(null); setSelectedEventDetail(null); setShowEventDetails(false); }}
         onShareEvent={(eventToShare) => handleShareEvent(eventToShare).catch(() => setErrorMessage('Unable to share event.'))}
         onCloseChat={() => setShowChatScreen(false)}
         onChatDraft={setChatDraft}

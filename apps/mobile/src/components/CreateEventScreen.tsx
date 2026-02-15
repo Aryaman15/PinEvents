@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View, Image } from 'react-native';
 import { EventDraft } from '../types/app';
 
 type Props = {
@@ -15,21 +15,15 @@ type Props = {
 type ScheduleTarget = 'start' | 'end';
 
 const WEEK_DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const QUICK_TIMES = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
 
 const parseIso = (value: string) => {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 };
 
-const formatDisplayDate = (value: string) => {
-  const parsed = parseIso(value);
-  return parsed.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
-};
-
-const formatDisplayTime = (value: string) => {
-  const parsed = parseIso(value);
-  return parsed.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-};
+const formatDisplayDate = (value: string) => parseIso(value).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+const formatDisplayTime = (value: string) => parseIso(value).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
 const mergeDate = (baseIso: string, pickedDate: Date) => {
   const next = new Date(parseIso(baseIso));
@@ -40,8 +34,7 @@ const mergeDate = (baseIso: string, pickedDate: Date) => {
 const mergeTime = (baseIso: string, timeText: string) => {
   const next = new Date(parseIso(baseIso));
   const [hours, minutes] = timeText.split(':').map(Number);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return baseIso;
-  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return baseIso;
+  if (Number.isNaN(hours) || Number.isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return baseIso;
   next.setHours(hours, minutes, 0, 0);
   return next.toISOString();
 };
@@ -51,15 +44,12 @@ const getMonthGrid = (monthDate: Date) => {
   const month = monthDate.getMonth();
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-
   const cells: Array<number | null> = [];
   for (let i = 0; i < firstDay; i += 1) cells.push(null);
   for (let day = 1; day <= daysInMonth; day += 1) cells.push(day);
   while (cells.length % 7 !== 0) cells.push(null);
   return cells;
 };
-
-const QUICK_TIMES = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
 
 export function CreateEventScreen({ draft, categoryInput, categories, onDraft, onCategoryInput, onCreate, onBack }: Props) {
   const scrollRef = useRef<ScrollView | null>(null);
@@ -68,6 +58,7 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
   const [activeTimeTarget, setActiveTimeTarget] = useState<ScheduleTarget | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [timeInput, setTimeInput] = useState('');
+  const [imageInput, setImageInput] = useState('');
 
   const filteredCategories = useMemo(() => {
     const query = categoryInput.trim().toLowerCase();
@@ -113,22 +104,27 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
   const selectDate = (day: number) => {
     if (!activeDateTarget) return;
     const picked = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
-    if (activeDateTarget === 'start') {
-      onDraft({ ...draft, startTime: mergeDate(draft.startTime, picked) });
-    } else {
-      onDraft({ ...draft, endTime: mergeDate(draft.endTime, picked) });
-    }
+    if (activeDateTarget === 'start') onDraft({ ...draft, startTime: mergeDate(draft.startTime, picked) });
+    else onDraft({ ...draft, endTime: mergeDate(draft.endTime, picked) });
     setActiveDateTarget(null);
   };
 
   const applyTime = (time: string) => {
     if (!activeTimeTarget) return;
-    if (activeTimeTarget === 'start') {
-      onDraft({ ...draft, startTime: mergeTime(draft.startTime, time) });
-    } else {
-      onDraft({ ...draft, endTime: mergeTime(draft.endTime, time) });
-    }
+    if (activeTimeTarget === 'start') onDraft({ ...draft, startTime: mergeTime(draft.startTime, time) });
+    else onDraft({ ...draft, endTime: mergeTime(draft.endTime, time) });
     setActiveTimeTarget(null);
+  };
+
+  const addImageUrl = () => {
+    const trimmed = imageInput.trim();
+    if (!trimmed || draft.imageUrls.length >= 4 || draft.imageUrls.includes(trimmed)) return;
+    onDraft({ ...draft, imageUrls: [...draft.imageUrls, trimmed] });
+    setImageInput('');
+  };
+
+  const removeImageUrl = (url: string) => {
+    onDraft({ ...draft, imageUrls: draft.imageUrls.filter((item) => item !== url) });
   };
 
   const selectedDate = activeDateTarget ? parseIso(activeDateTarget === 'start' ? draft.startTime : draft.endTime) : null;
@@ -160,6 +156,28 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
           )}
         </View>
       )}
+
+      <Text className="text-sm font-medium text-slate-700">Event images (up to 4)</Text>
+      <View className="flex-row gap-2">
+        <TextInput
+          className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2"
+          placeholder="Paste image URL"
+          value={imageInput}
+          onChangeText={setImageInput}
+          autoCapitalize="none"
+        />
+        <Pressable className="rounded-lg bg-slate-800 px-4 py-2" onPress={addImageUrl}><Text className="text-white">Add</Text></Pressable>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+        {draft.imageUrls.map((url) => (
+          <View key={url} className="w-36 rounded-lg border border-slate-200 bg-white p-2">
+            <Image source={{ uri: url }} className="h-20 w-full rounded-md bg-slate-100" resizeMode="cover" />
+            <Pressable className="mt-2 rounded-md bg-red-50 px-2 py-1" onPress={() => removeImageUrl(url)}>
+              <Text className="text-center text-xs text-red-600">Remove</Text>
+            </Pressable>
+          </View>
+        ))}
+      </ScrollView>
 
       <View className="flex-row gap-2">
         <Pressable className={`flex-1 rounded-xl px-4 py-3 ${draft.type === 'public' ? 'bg-blue-600' : 'bg-slate-200'}`} onPress={() => onDraft({ ...draft, type: 'public' })}><Text className={`text-center ${draft.type === 'public' ? 'text-white' : 'text-slate-700'}`}>Public</Text></Pressable>
@@ -224,13 +242,13 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
               onChangeText={setTimeInput}
             />
             <Text className="text-xs text-slate-600">Typing: {timeInput || '--:--'}</Text>
-            <View className="flex-row flex-wrap gap-2">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {QUICK_TIMES.map((time) => (
                 <Pressable key={time} className="rounded-md border border-slate-200 bg-white px-3 py-2" onPress={() => applyTime(time)}>
                   <Text className="text-slate-700">{time}</Text>
                 </Pressable>
               ))}
-            </View>
+            </ScrollView>
             <View className="flex-row gap-2">
               <Pressable className="flex-1 rounded-md bg-blue-600 px-3 py-2" onPress={() => applyTime(timeInput)}><Text className="text-center text-white">Apply</Text></Pressable>
               <Pressable className="flex-1 rounded-md border border-slate-300 px-3 py-2" onPress={() => setActiveTimeTarget(null)}><Text className="text-center text-slate-700">Cancel</Text></Pressable>
