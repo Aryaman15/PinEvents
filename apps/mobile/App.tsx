@@ -3,7 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { NativeModulesProxy } from "expo-modules-core";
 import * as Location from "expo-location";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Share, View } from "react-native";
+import { ActivityIndicator, BackHandler, Share, View } from "react-native";
 import { io, Socket } from "socket.io-client";
 import type { Feature, FeatureCollection, Point } from "geojson";
 import MapLibreGL from "@maplibre/maplibre-react-native";
@@ -80,6 +80,8 @@ export default function App() {
   const [chatDraft, setChatDraft] = useState("");
 
   const [newCategoryInput, setNewCategoryInput] = useState("");
+  const [createCoordinate, setCreateCoordinate] =
+    useState<[number, number]>(initialCenter);
   const [eventDraft, setEventDraft] = useState<EventDraft>({
     title: "",
     description: "",
@@ -183,7 +185,15 @@ export default function App() {
     const socket = io(apiUrl, { auth: { token: authToken } });
     socketRef.current = socket;
     socket.on("message", (message: EventMessage) =>
-      setChatMessages((prev) => [...prev, message]),
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          ...message,
+          isMine:
+            message.isMine ??
+            Boolean(profile?.id && message.createdBy === profile.id),
+        },
+      ]),
     );
     socket.emit(
       "join",
@@ -196,6 +206,54 @@ export default function App() {
       socketRef.current = null;
     };
   }, [showChatScreen, authToken, chatEventId]);
+
+  useEffect(() => {
+    if (!authToken) return;
+
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        if (showChatScreen) {
+          setShowChatScreen(false);
+          return true;
+        }
+        if (showEventDetails) {
+          setShowEventDetails(false);
+          return true;
+        }
+        if (selectedEventId || selectedEventDetail) {
+          setSelectedEventId(null);
+          setSelectedEventDetail(null);
+          return true;
+        }
+        if (showCreateEvent) {
+          setShowCreateEvent(false);
+          return true;
+        }
+        if (showProfileEditor) {
+          setShowProfileEditor(false);
+          return true;
+        }
+        if (showProfileScreen) {
+          setShowProfileScreen(false);
+          return true;
+        }
+
+        return false;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [
+    authToken,
+    showChatScreen,
+    showEventDetails,
+    selectedEventId,
+    selectedEventDetail,
+    showCreateEvent,
+    showProfileEditor,
+    showProfileScreen,
+  ]);
 
   useEffect(() => {
     if (selectedEventDetail?.viewer?.role === "admin") {
@@ -422,7 +480,7 @@ export default function App() {
       body: JSON.stringify({
         ...eventDraft,
         category: finalCategory,
-        location: { type: "Point", coordinates: centerCoordinate },
+        location: { type: "Point", coordinates: createCoordinate },
       }),
     });
     if (response.status === 401) {
@@ -442,6 +500,7 @@ export default function App() {
       endTime: new Date(Date.now() + 3600_000).toISOString(),
       imageUrls: [],
     });
+    setCreateCoordinate(centerCoordinate);
     await loadEvents(authToken, centerCoordinate);
   };
 
@@ -528,34 +587,6 @@ export default function App() {
     setSelectedEventRequests(data.requests ?? []);
   };
 
-  // const handleRequestDecision = async (
-  //   requestId: string,
-  //   action: "approve" | "reject",
-  // ) => {
-  //   if (!authToken || !selectedEventDetail) {
-  //     return;
-  //   }
-  //   // if (!apiUrl) {
-  //   //   setErrorMessage("EXPO_PUBLIC_API_URL is not set.");
-  //   //   return;
-  //   // }
-
-  //   try {
-  //     const response = await fetch(
-  //       `${apiUrl}/events/${selectedEventDetail.id}/requests/${requestId}/${action}`,
-  //       {
-  //         method: "PATCH",
-  //         headers: {
-  //           Authorization: `Bearer ${authToken}`,
-  //         },
-  //       },
-  //     );
-
-  //     if (!response.ok) {
-  //       setErrorMessage("Unable to update request.");
-  //       return;
-  //     }
-
   //     setSelectedEventRequests((prev) =>
   //       prev.map((request) =>
   //         request.id === requestId
@@ -611,7 +642,13 @@ export default function App() {
     }
     if (!response.ok) return setErrorMessage("Unable to load chat history.");
     const data = (await response.json()) as { messages?: EventMessage[] };
-    setChatMessages(data.messages ?? []);
+    const normalized = (data.messages ?? []).map((message) => ({
+      ...message,
+      isMine:
+        message.isMine ??
+        Boolean(profile?.id && message.createdBy === profile.id),
+    }));
+    setChatMessages(normalized);
   };
 
   const handleLogout = async () => {
@@ -752,9 +789,12 @@ export default function App() {
           categoryInput={newCategoryInput}
           categories={availableCategories}
           isUploadingImages={isUploadingImages}
+          mapStyleUrl={mapStyleUrl}
+          selectedCoordinate={createCoordinate}
           errorMessage={errorMessage}
           onDraft={setEventDraft}
           onCategoryInput={setNewCategoryInput}
+          onSelectCoordinate={setCreateCoordinate}
           onPickImages={() =>
             handlePickImages().catch(() =>
               setErrorMessage("Unable to upload images."),
@@ -797,7 +837,10 @@ export default function App() {
           setSearchQuery("");
           setSearchCategory("");
         }}
-        onOpenCreate={() => setShowCreateEvent(true)}
+        onOpenCreate={() => {
+          setCreateCoordinate(centerCoordinate);
+          setShowCreateEvent(true);
+        }}
         onOpenProfile={() =>
           handleOpenProfile().catch(() =>
             setErrorMessage("Unable to load profile."),

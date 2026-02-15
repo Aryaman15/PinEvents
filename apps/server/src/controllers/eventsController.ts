@@ -555,9 +555,15 @@ export const listMessages: RequestHandler = async (req, res) => {
     return res.status(404).json({ error: "Event not found" });
   }
 
-  const isAccepted = await isAcceptedMember(id, userId, event.acceptedMembers);
-  if (!isAccepted) {
-    return res.status(403).json({ error: "Forbidden" });
+  if (event.type === "private") {
+    const isAccepted = await isAcceptedMember(
+      id,
+      userId,
+      event.acceptedMembers,
+    );
+    if (!isAccepted) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
   }
 
   const messages = await EventMessage.find({ eventId: event._id })
@@ -582,7 +588,9 @@ export const listMessages: RequestHandler = async (req, res) => {
         eventId: message.eventId.toString(),
         text: message.text,
         createdAt: message.createdAt,
+        createdBy: message.userId.toString(),
         displayName: displayNameById.get(message.userId.toString()) ?? "",
+        isMine: message.userId.toString() === userId,
       }))
       .reverse(),
   });

@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState } from "react";
+import MapLibreGL from "@maplibre/maplibre-react-native";
+import type { Feature, Point } from "geojson";
 import {
   Image,
   Pressable,
@@ -14,9 +16,12 @@ type Props = {
   categoryInput: string;
   categories: string[];
   isUploadingImages: boolean;
+  mapStyleUrl: string;
+  selectedCoordinate: [number, number];
   errorMessage?: string;
   onDraft: (next: EventDraft) => void;
   onCategoryInput: (v: string) => void;
+  onSelectCoordinate: (coordinate: [number, number]) => void;
   onPickImages: () => void;
   onCreate: () => void;
   onBack: () => void;
@@ -95,9 +100,12 @@ export function CreateEventScreen({
   categoryInput,
   categories,
   isUploadingImages,
+  mapStyleUrl,
+  selectedCoordinate,
   errorMessage,
   onDraft,
   onCategoryInput,
+  onSelectCoordinate,
   onPickImages,
   onCreate,
   onBack,
@@ -208,6 +216,15 @@ export function CreateEventScreen({
     ? parseIso(activeDateTarget === "start" ? draft.startTime : draft.endTime)
     : null;
   const monthCells = getMonthGrid(calendarMonth);
+
+  const eventLocationFeature: Feature<Point> = {
+    type: "Feature",
+    properties: { id: "create-location" },
+    geometry: {
+      type: "Point",
+      coordinates: selectedCoordinate,
+    },
+  };
 
   return (
     <ScrollView
@@ -337,6 +354,51 @@ export function CreateEventScreen({
             ))}
           </ScrollView>
         )}
+      </View>
+
+      <View className="rounded-xl border border-slate-200 bg-white p-3 gap-2">
+        <Text className="text-sm font-semibold text-slate-700">
+          Event location
+        </Text>
+        <Text className="text-xs text-slate-500">
+          Tap anywhere on the map to place your event pin.
+        </Text>
+        <View className="h-44 overflow-hidden rounded-lg border border-slate-200">
+          <MapLibreGL.MapView
+            mapStyle={mapStyleUrl}
+            style={{ flex: 1 }}
+            onPress={(event) => {
+              const coordinates = event.geometry?.coordinates as
+                | [number, number]
+                | undefined;
+              if (!coordinates || coordinates.length !== 2) return;
+              onSelectCoordinate([coordinates[0], coordinates[1]]);
+            }}
+          >
+            <MapLibreGL.Camera
+              zoomLevel={13}
+              centerCoordinate={selectedCoordinate}
+            />
+            <MapLibreGL.ShapeSource
+              id="create-location-point"
+              shape={eventLocationFeature}
+            >
+              <MapLibreGL.CircleLayer
+                id="create-location-circle"
+                style={{
+                  circleRadius: 7,
+                  circleColor: "#2563eb",
+                  circleStrokeWidth: 2,
+                  circleStrokeColor: "#ffffff",
+                }}
+              />
+            </MapLibreGL.ShapeSource>
+          </MapLibreGL.MapView>
+        </View>
+        <Text className="text-xs text-slate-600">
+          Lng: {selectedCoordinate[0].toFixed(5)} • Lat:{" "}
+          {selectedCoordinate[1].toFixed(5)}
+        </Text>
       </View>
 
       <View className="flex-row gap-2">
