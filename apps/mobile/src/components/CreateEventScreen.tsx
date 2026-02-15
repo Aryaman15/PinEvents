@@ -110,6 +110,7 @@ export function CreateEventScreen({
     useState<ScheduleTarget | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [timeInput, setTimeInput] = useState("");
+  const [imageInput, setImageInput] = useState("");
 
   const filteredCategories = useMemo(() => {
     const query = categoryInput.trim().toLowerCase();
@@ -177,6 +178,23 @@ export function CreateEventScreen({
       onDraft({ ...draft, startTime: mergeTime(draft.startTime, time) });
     else onDraft({ ...draft, endTime: mergeTime(draft.endTime, time) });
     setActiveTimeTarget(null);
+  };
+
+  const addImageUrl = () => {
+    const trimmed = imageInput.trim();
+    if (
+      !trimmed ||
+      draft.imageUrls.length >= 4 ||
+      draft.imageUrls.includes(trimmed)
+    ) {
+      return;
+    }
+
+    onDraft({
+      ...draft,
+      imageUrls: [...draft.imageUrls, trimmed],
+    });
+    setImageInput("");
   };
 
   const removeImageUrl = (url: string) => {
@@ -271,8 +289,26 @@ export function CreateEventScreen({
           </Pressable>
         </View>
         <Text className="text-xs text-slate-500">
-          Select images from your phone. No URL paste required.
+          Select images from your phone. If your dev build blocks picker, paste
+          image links below.
         </Text>
+        <View className="flex-row items-center gap-2">
+          <TextInput
+            className="flex-1 rounded-md border border-slate-200 bg-white px-3 py-2"
+            placeholder="https://image-url.jpg"
+            value={imageInput}
+            onChangeText={setImageInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable
+            className="rounded-md bg-slate-800 px-3 py-2"
+            onPress={addImageUrl}
+            disabled={draft.imageUrls.length >= 4}
+          >
+            <Text className="text-white">Add link</Text>
+          </Pressable>
+        </View>
         {!!draft.imageUrls.length && (
           <ScrollView
             horizontal
