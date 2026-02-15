@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { EventDraft } from '../types/app';
 
@@ -62,6 +62,7 @@ const getMonthGrid = (monthDate: Date) => {
 const QUICK_TIMES = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
 
 export function CreateEventScreen({ draft, categoryInput, categories, onDraft, onCategoryInput, onCreate, onBack }: Props) {
+  const scrollRef = useRef<ScrollView | null>(null);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [activeDateTarget, setActiveDateTarget] = useState<ScheduleTarget | null>(null);
   const [activeTimeTarget, setActiveTimeTarget] = useState<ScheduleTarget | null>(null);
@@ -106,6 +107,7 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
     const source = target === 'start' ? draft.startTime : draft.endTime;
     const parsed = parseIso(source);
     setTimeInput(`${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
   };
 
   const selectDate = (day: number) => {
@@ -133,7 +135,7 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
   const monthCells = getMonthGrid(calendarMonth);
 
   return (
-    <ScrollView className="flex-1 bg-slate-50" contentContainerStyle={{ padding: 24, rowGap: 12 }} keyboardShouldPersistTaps="handled">
+    <ScrollView ref={scrollRef} className="flex-1 bg-slate-50" contentContainerStyle={{ padding: 24, rowGap: 12, paddingBottom: 220 }} keyboardShouldPersistTaps="handled">
       <Text className="text-2xl font-bold">Create event</Text>
       <TextInput className="rounded-xl border border-slate-200 bg-white px-4 py-3" placeholder="Title" value={draft.title} onChangeText={(v) => onDraft({ ...draft, title: v })} />
       <TextInput className="rounded-xl border border-slate-200 bg-white px-4 py-3" placeholder="Description" multiline value={draft.description} onChangeText={(v) => onDraft({ ...draft, description: v })} />
@@ -211,7 +213,17 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
         {!!activeTimeTarget && (
           <View className="rounded-lg border border-blue-100 bg-blue-50 p-3 gap-2">
             <Text className="text-sm font-medium text-slate-700">Pick time</Text>
-            <TextInput className="rounded-md border border-slate-200 bg-white px-3 py-2" placeholder="HH:MM (24h)" value={timeInput} onChangeText={setTimeInput} />
+            <Text className="text-xs text-slate-500">Enter in 24-hour format, e.g. 09:30</Text>
+            <TextInput
+              className="rounded-md border-2 border-blue-300 bg-white px-3 py-2 text-slate-900"
+              placeholder="HH:MM (24h)"
+              placeholderTextColor="#94a3b8"
+              selectionColor="#2563eb"
+              autoFocus
+              value={timeInput}
+              onChangeText={setTimeInput}
+            />
+            <Text className="text-xs text-slate-600">Typing: {timeInput || '--:--'}</Text>
             <View className="flex-row flex-wrap gap-2">
               {QUICK_TIMES.map((time) => (
                 <Pressable key={time} className="rounded-md border border-slate-200 bg-white px-3 py-2" onPress={() => applyTime(time)}>
