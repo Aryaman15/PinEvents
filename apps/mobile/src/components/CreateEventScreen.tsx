@@ -1,5 +1,5 @@
-import { ComponentType, useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { EventDraft } from '../types/app';
 
 type Props = {
@@ -12,101 +12,47 @@ type Props = {
   onBack: () => void;
 };
 
-type PickerTarget = 'start' | 'end';
-type PickerMode = 'date' | 'time';
-
-type ActivePicker = {
-  target: PickerTarget;
-  mode: PickerMode;
-};
-
-type DateTimePickerEventLike = { type?: 'set' | 'dismissed' };
-
-type DateTimePickerModule = {
-  DateTimePicker: ComponentType<{
-    value: Date;
-    mode: PickerMode;
-    display?: 'default' | 'spinner';
-    onChange: (event: DateTimePickerEventLike, selectedDate?: Date) => void;
-  }>;
-};
-
-const loadDateTimePicker = (): DateTimePickerModule | null => {
-  try {
-    const module = require('@react-native-community/datetimepicker');
-    return { DateTimePicker: module.default };
-  } catch {
-    return null;
-  }
-};
+type ScheduleTarget = 'start' | 'end';
 
 const formatDisplayDate = (value: string) => {
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return 'Select date';
+  if (Number.isNaN(parsed.getTime())) return 'Invalid date';
   return parsed.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
 const formatDisplayTime = (value: string) => {
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return 'Select time';
+  if (Number.isNaN(parsed.getTime())) return 'Invalid time';
   return parsed.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 };
 
-const mergeDate = (baseIso: string, pickedDate: Date) => {
-  const base = new Date(baseIso);
-  if (Number.isNaN(base.getTime())) return baseIso;
-  const next = new Date(base);
-  next.setFullYear(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
-  return next.toISOString();
-};
-
-const mergeTime = (baseIso: string, pickedTime: Date) => {
-  const base = new Date(baseIso);
-  if (Number.isNaN(base.getTime())) return baseIso;
-  const next = new Date(base);
-  next.setHours(pickedTime.getHours(), pickedTime.getMinutes(), 0, 0);
-  return next.toISOString();
-};
-
-const getDatePart = (value: string) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '';
-  const year = parsed.getFullYear();
-  const month = String(parsed.getMonth() + 1).padStart(2, '0');
-  const day = String(parsed.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const getTimePart = (value: string) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '';
-  const hours = String(parsed.getHours()).padStart(2, '0');
-  const minutes = String(parsed.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes}`;
-};
-
-const setDatePart = (value: string, nextDate: string) => {
+const shiftByMinutes = (value: string, minutes: number) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  const [year, month, day] = nextDate.split('-').map(Number);
-  if (!year || !month || !day) return value;
-  parsed.setFullYear(year, month - 1, day);
+  parsed.setMinutes(parsed.getMinutes() + minutes);
   return parsed.toISOString();
 };
 
-const setTimePart = (value: string, nextTime: string) => {
+const shiftByDays = (value: string, days: number) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  const [hours, minutes] = nextTime.split(':').map(Number);
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return value;
-  parsed.setHours(hours, minutes, 0, 0);
+  parsed.setDate(parsed.getDate() + days);
   return parsed.toISOString();
+};
+
+const applyScheduleShift = (
+  draft: EventDraft,
+  target: ScheduleTarget,
+  updater: (iso: string) => string,
+): EventDraft => {
+  if (target === 'start') {
+    return { ...draft, startTime: updater(draft.startTime) };
+  }
+  return { ...draft, endTime: updater(draft.endTime) };
 };
 
 export function CreateEventScreen({ draft, categoryInput, categories, onDraft, onCategoryInput, onCreate, onBack }: Props) {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [activePicker, setActivePicker] = useState<ActivePicker | null>(null);
-  const [nativePickerAvailable] = useState(() => Boolean(loadDateTimePicker()));
 
   const filteredCategories = useMemo(() => {
     const query = categoryInput.trim().toLowerCase();
@@ -134,39 +80,24 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
     setShowCategoryDropdown(false);
   };
 
-  const pickerIsoValue =
-    activePicker?.target === 'start'
-      ? draft.startTime
-      : activePicker?.target === 'end'
-        ? draft.endTime
-        : new Date().toISOString();
-
-  const handlePickerChange = (event: DateTimePickerEventLike, selectedDate?: Date) => {
-    if (!activePicker) return;
-
-    if (Platform.OS !== 'ios') {
-      setActivePicker(null);
-    }
-
-    if (event.type === 'dismissed' || !selectedDate) {
-      return;
-    }
-
-    if (activePicker.target === 'start') {
-      const nextStart = activePicker.mode === 'date'
-        ? mergeDate(draft.startTime, selectedDate)
-        : mergeTime(draft.startTime, selectedDate);
-      onDraft({ ...draft, startTime: nextStart });
-      return;
-    }
-
-    const nextEnd = activePicker.mode === 'date'
-      ? mergeDate(draft.endTime, selectedDate)
-      : mergeTime(draft.endTime, selectedDate);
-    onDraft({ ...draft, endTime: nextEnd });
+  const handleShift = (target: ScheduleTarget, shiftType: 'min' | 'day', amount: number) => {
+    const updateFn = shiftType === 'min'
+      ? (iso: string) => shiftByMinutes(iso, amount)
+      : (iso: string) => shiftByDays(iso, amount);
+    onDraft(applyScheduleShift(draft, target, updateFn));
   };
 
-  const DateTimePicker = loadDateTimePicker()?.DateTimePicker;
+  const setEndOneHourAfterStart = () => {
+    onDraft({
+      ...draft,
+      endTime: shiftByMinutes(draft.startTime, 60),
+    });
+  };
+
+  const setStartNow = () => {
+    const now = new Date();
+    onDraft({ ...draft, startTime: now.toISOString() });
+  };
 
   return (
     <ScrollView className="flex-1 bg-slate-50" contentContainerStyle={{ padding: 24, rowGap: 12 }} keyboardShouldPersistTaps="handled">
@@ -220,75 +151,41 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
       <View className="rounded-xl border border-slate-200 bg-white p-3 gap-3">
         <Text className="text-sm font-semibold text-slate-700">Schedule</Text>
 
-        <View className="gap-2">
-          <Text className="text-xs font-medium text-slate-500">Start</Text>
-          <View className="flex-row gap-2">
-            <Pressable
-              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3"
-              onPress={() => nativePickerAvailable && setActivePicker({ target: 'start', mode: 'date' })}
-            >
-              <Text className="text-slate-800">📅 {formatDisplayDate(draft.startTime)}</Text>
-            </Pressable>
-            <Pressable
-              className="w-36 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3"
-              onPress={() => nativePickerAvailable && setActivePicker({ target: 'start', mode: 'time' })}
-            >
-              <Text className="text-slate-800">🕒 {formatDisplayTime(draft.startTime)}</Text>
-            </Pressable>
-          </View>
-
-          {!nativePickerAvailable && (
-            <View className="flex-row gap-2">
-              <TextInput className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2" placeholder="YYYY-MM-DD" value={getDatePart(draft.startTime)} onChangeText={(nextDate) => onDraft({ ...draft, startTime: setDatePart(draft.startTime, nextDate) })} />
-              <TextInput className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2" placeholder="HH:MM" value={getTimePart(draft.startTime)} onChangeText={(nextTime) => onDraft({ ...draft, startTime: setTimePart(draft.startTime, nextTime) })} />
-            </View>
-          )}
+        <View className="flex-row gap-2">
+          <Pressable className="flex-1 rounded-lg bg-slate-100 px-3 py-2" onPress={setStartNow}>
+            <Text className="text-center text-slate-700">Start Now</Text>
+          </Pressable>
+          <Pressable className="flex-1 rounded-lg bg-slate-100 px-3 py-2" onPress={setEndOneHourAfterStart}>
+            <Text className="text-center text-slate-700">End = Start + 1h</Text>
+          </Pressable>
         </View>
 
-        <View className="gap-2">
-          <Text className="text-xs font-medium text-slate-500">End</Text>
-          <View className="flex-row gap-2">
-            <Pressable
-              className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3"
-              onPress={() => nativePickerAvailable && setActivePicker({ target: 'end', mode: 'date' })}
-            >
-              <Text className="text-slate-800">📅 {formatDisplayDate(draft.endTime)}</Text>
-            </Pressable>
-            <Pressable
-              className="w-36 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3"
-              onPress={() => nativePickerAvailable && setActivePicker({ target: 'end', mode: 'time' })}
-            >
-              <Text className="text-slate-800">🕒 {formatDisplayTime(draft.endTime)}</Text>
-            </Pressable>
-          </View>
+        {(['start', 'end'] as const).map((target) => (
+          <View key={target} className="rounded-lg border border-slate-100 bg-slate-50 p-3 gap-2">
+            <Text className="text-xs font-semibold uppercase text-slate-500">{target}</Text>
+            <Text className="text-base font-medium text-slate-800">
+              {formatDisplayDate(target === 'start' ? draft.startTime : draft.endTime)} • {formatDisplayTime(target === 'start' ? draft.startTime : draft.endTime)}
+            </Text>
 
-          {!nativePickerAvailable && (
             <View className="flex-row gap-2">
-              <TextInput className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2" placeholder="YYYY-MM-DD" value={getDatePart(draft.endTime)} onChangeText={(nextDate) => onDraft({ ...draft, endTime: setDatePart(draft.endTime, nextDate) })} />
-              <TextInput className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2" placeholder="HH:MM" value={getTimePart(draft.endTime)} onChangeText={(nextTime) => onDraft({ ...draft, endTime: setTimePart(draft.endTime, nextTime) })} />
-            </View>
-          )}
-        </View>
-
-        {!!activePicker && !!DateTimePicker && (
-          <View className="rounded-lg border border-blue-100 bg-blue-50 p-2">
-            <DateTimePicker
-              value={new Date(pickerIsoValue)}
-              mode={activePicker.mode}
-              display={activePicker.mode === 'date' ? 'default' : 'spinner'}
-              onChange={handlePickerChange}
-            />
-            {Platform.OS === 'ios' && (
-              <Pressable className="mt-2 rounded-md bg-blue-600 px-3 py-2" onPress={() => setActivePicker(null)}>
-                <Text className="text-center text-white font-medium">Done</Text>
+              <Pressable className="flex-1 rounded-md border border-slate-200 bg-white px-2 py-2" onPress={() => handleShift(target, 'day', -1)}>
+                <Text className="text-center text-slate-700">-1 day</Text>
               </Pressable>
-            )}
-          </View>
-        )}
+              <Pressable className="flex-1 rounded-md border border-slate-200 bg-white px-2 py-2" onPress={() => handleShift(target, 'day', 1)}>
+                <Text className="text-center text-slate-700">+1 day</Text>
+              </Pressable>
+            </View>
 
-        {!nativePickerAvailable && (
-          <Text className="text-xs text-amber-700">Native date picker not available in this build. Using manual date/time fields.</Text>
-        )}
+            <View className="flex-row gap-2">
+              <Pressable className="flex-1 rounded-md border border-slate-200 bg-white px-2 py-2" onPress={() => handleShift(target, 'min', -15)}>
+                <Text className="text-center text-slate-700">-15 min</Text>
+              </Pressable>
+              <Pressable className="flex-1 rounded-md border border-slate-200 bg-white px-2 py-2" onPress={() => handleShift(target, 'min', 15)}>
+                <Text className="text-center text-slate-700">+15 min</Text>
+              </Pressable>
+            </View>
+          </View>
+        ))}
       </View>
 
       <Pressable className="bg-blue-600 rounded-xl px-4 py-3" onPress={onCreate}><Text className="text-white text-center">Create</Text></Pressable>
