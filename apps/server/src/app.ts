@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
+import path from "path";
 import { authRouter } from "./routes/auth.routes";
 import { eventsRouter } from "./routes/events.routes";
 import { meRouter } from "./routes/me.routes";
@@ -24,6 +25,7 @@ export const createApp = () => {
   );
 
   app.use(express.json());
+  app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });

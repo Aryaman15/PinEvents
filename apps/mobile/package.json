@@ -15,12 +15,16 @@
     "expo-location": "^19.0.8",
     "expo-secure-store": "^15.0.8",
     "expo-status-bar": "~3.0.9",
+    "nativewind": "^4.2.1",
     "react": "19.1.0",
     "react-native": "0.81.5",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "tailwindcss": "^3.4.19",
+    "expo-image-picker": "^17.0.8"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "babel-preset-expo": "^54.0.10",
     "typescript": "~5.9.2"
   },
   "private": true

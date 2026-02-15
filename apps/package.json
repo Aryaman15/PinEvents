@@ -1,11 +1,11 @@
 {
   "name": "pinevents",
   "private": true,
-  "workspaces": ["apps/*"],
+  "workspaces": ["server", "mobile"],
   "scripts": {
     "dev": "concurrently \"npm run dev:mobile\" \"npm run dev:server\"",
-    "dev:mobile": "npm --workspace apps/mobile run start",
-    "dev:server": "npm --workspace apps/server run dev",
+    "dev:mobile": "npm --workspace mobile run start",
+    "dev:server": "npm --workspace server run dev",
     "lint": "prettier --check .",
     "format": "prettier --write ."
   },

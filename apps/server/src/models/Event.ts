@@ -26,6 +26,14 @@ const eventSchema = new Schema(
     },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     acceptedMembers: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    imageUrls: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: (value: string[]) => value.length <= 4,
+        message: "At most 4 event images are allowed.",
+      },
+    },
   },
   {
     timestamps: { createdAt: true, updatedAt: false },
