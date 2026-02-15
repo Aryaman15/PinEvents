@@ -14,45 +14,59 @@ type Props = {
 
 type ScheduleTarget = 'start' | 'end';
 
-const formatDisplayDate = (value: string) => {
+const WEEK_DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+const parseIso = (value: string) => {
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return 'Invalid date';
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+};
+
+const formatDisplayDate = (value: string) => {
+  const parsed = parseIso(value);
   return parsed.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
 const formatDisplayTime = (value: string) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return 'Invalid time';
+  const parsed = parseIso(value);
   return parsed.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 };
 
-const shiftByMinutes = (value: string, minutes: number) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  parsed.setMinutes(parsed.getMinutes() + minutes);
-  return parsed.toISOString();
+const mergeDate = (baseIso: string, pickedDate: Date) => {
+  const next = new Date(parseIso(baseIso));
+  next.setFullYear(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
+  return next.toISOString();
 };
 
-const shiftByDays = (value: string, days: number) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  parsed.setDate(parsed.getDate() + days);
-  return parsed.toISOString();
+const mergeTime = (baseIso: string, timeText: string) => {
+  const next = new Date(parseIso(baseIso));
+  const [hours, minutes] = timeText.split(':').map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return baseIso;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return baseIso;
+  next.setHours(hours, minutes, 0, 0);
+  return next.toISOString();
 };
 
-const applyScheduleShift = (
-  draft: EventDraft,
-  target: ScheduleTarget,
-  updater: (iso: string) => string,
-): EventDraft => {
-  if (target === 'start') {
-    return { ...draft, startTime: updater(draft.startTime) };
-  }
-  return { ...draft, endTime: updater(draft.endTime) };
+const getMonthGrid = (monthDate: Date) => {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const cells: Array<number | null> = [];
+  for (let i = 0; i < firstDay; i += 1) cells.push(null);
+  for (let day = 1; day <= daysInMonth; day += 1) cells.push(day);
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
 };
+
+const QUICK_TIMES = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
 
 export function CreateEventScreen({ draft, categoryInput, categories, onDraft, onCategoryInput, onCreate, onBack }: Props) {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [activeDateTarget, setActiveDateTarget] = useState<ScheduleTarget | null>(null);
+  const [activeTimeTarget, setActiveTimeTarget] = useState<ScheduleTarget | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [timeInput, setTimeInput] = useState('');
 
   const filteredCategories = useMemo(() => {
     const query = categoryInput.trim().toLowerCase();
@@ -80,24 +94,43 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
     setShowCategoryDropdown(false);
   };
 
-  const handleShift = (target: ScheduleTarget, shiftType: 'min' | 'day', amount: number) => {
-    const updateFn = shiftType === 'min'
-      ? (iso: string) => shiftByMinutes(iso, amount)
-      : (iso: string) => shiftByDays(iso, amount);
-    onDraft(applyScheduleShift(draft, target, updateFn));
+  const openDatePicker = (target: ScheduleTarget) => {
+    setActiveTimeTarget(null);
+    setActiveDateTarget(target);
+    setCalendarMonth(parseIso(target === 'start' ? draft.startTime : draft.endTime));
   };
 
-  const setEndOneHourAfterStart = () => {
-    onDraft({
-      ...draft,
-      endTime: shiftByMinutes(draft.startTime, 60),
-    });
+  const openTimePicker = (target: ScheduleTarget) => {
+    setActiveDateTarget(null);
+    setActiveTimeTarget(target);
+    const source = target === 'start' ? draft.startTime : draft.endTime;
+    const parsed = parseIso(source);
+    setTimeInput(`${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`);
   };
 
-  const setStartNow = () => {
-    const now = new Date();
-    onDraft({ ...draft, startTime: now.toISOString() });
+  const selectDate = (day: number) => {
+    if (!activeDateTarget) return;
+    const picked = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
+    if (activeDateTarget === 'start') {
+      onDraft({ ...draft, startTime: mergeDate(draft.startTime, picked) });
+    } else {
+      onDraft({ ...draft, endTime: mergeDate(draft.endTime, picked) });
+    }
+    setActiveDateTarget(null);
   };
+
+  const applyTime = (time: string) => {
+    if (!activeTimeTarget) return;
+    if (activeTimeTarget === 'start') {
+      onDraft({ ...draft, startTime: mergeTime(draft.startTime, time) });
+    } else {
+      onDraft({ ...draft, endTime: mergeTime(draft.endTime, time) });
+    }
+    setActiveTimeTarget(null);
+  };
+
+  const selectedDate = activeDateTarget ? parseIso(activeDateTarget === 'start' ? draft.startTime : draft.endTime) : null;
+  const monthCells = getMonthGrid(calendarMonth);
 
   return (
     <ScrollView className="flex-1 bg-slate-50" contentContainerStyle={{ padding: 24, rowGap: 12 }} keyboardShouldPersistTaps="handled">
@@ -107,38 +140,21 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
 
       <Text className="text-sm font-medium text-slate-700">Category</Text>
       <Pressable className="rounded-xl border border-slate-200 bg-white px-4 py-3" onPress={() => setShowCategoryDropdown((prev) => !prev)}>
-        <Text className={draft.category ? 'text-slate-900' : 'text-slate-400'}>
-          {draft.category || 'Select or create category'}
-        </Text>
+        <Text className={draft.category ? 'text-slate-900' : 'text-slate-400'}>{draft.category || 'Select or create category'}</Text>
       </Pressable>
 
       {showCategoryDropdown && (
         <View className="rounded-xl border border-slate-200 bg-white p-3 gap-2">
-          <TextInput
-            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-            placeholder="Search category"
-            value={categoryInput}
-            onChangeText={onCategoryInput}
-          />
-
+          <TextInput className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2" placeholder="Search category" value={categoryInput} onChangeText={onCategoryInput} />
           <View className="max-h-40">
             <ScrollView keyboardShouldPersistTaps="handled">
-              {filteredCategories.length ? (
-                filteredCategories.map((category) => (
-                  <Pressable key={category} className="px-2 py-2" onPress={() => selectExistingCategory(category)}>
-                    <Text className="text-slate-800">{category}</Text>
-                  </Pressable>
-                ))
-              ) : (
-                <Text className="px-2 py-2 text-slate-500">No matching category found.</Text>
-              )}
+              {filteredCategories.length ? filteredCategories.map((category) => (
+                <Pressable key={category} className="px-2 py-2" onPress={() => selectExistingCategory(category)}><Text className="text-slate-800">{category}</Text></Pressable>
+              )) : <Text className="px-2 py-2 text-slate-500">No matching category found.</Text>}
             </ScrollView>
           </View>
-
           {!!categoryInput.trim() && !hasExactMatch && (
-            <Pressable className="rounded-lg bg-blue-600 px-3 py-2" onPress={createNewCategory}>
-              <Text className="text-center font-medium text-white">Create "{categoryInput.trim()}"</Text>
-            </Pressable>
+            <Pressable className="rounded-lg bg-blue-600 px-3 py-2" onPress={createNewCategory}><Text className="text-center font-medium text-white">Create "{categoryInput.trim()}"</Text></Pressable>
           )}
         </View>
       )}
@@ -151,41 +167,64 @@ export function CreateEventScreen({ draft, categoryInput, categories, onDraft, o
       <View className="rounded-xl border border-slate-200 bg-white p-3 gap-3">
         <Text className="text-sm font-semibold text-slate-700">Schedule</Text>
 
-        <View className="flex-row gap-2">
-          <Pressable className="flex-1 rounded-lg bg-slate-100 px-3 py-2" onPress={setStartNow}>
-            <Text className="text-center text-slate-700">Start Now</Text>
-          </Pressable>
-          <Pressable className="flex-1 rounded-lg bg-slate-100 px-3 py-2" onPress={setEndOneHourAfterStart}>
-            <Text className="text-center text-slate-700">End = Start + 1h</Text>
-          </Pressable>
-        </View>
+        {(['start', 'end'] as const).map((target) => {
+          const iso = target === 'start' ? draft.startTime : draft.endTime;
+          return (
+            <View key={target} className="rounded-lg border border-slate-100 bg-slate-50 p-3 gap-2">
+              <Text className="text-xs font-semibold uppercase text-slate-500">{target}</Text>
+              <View className="flex-row gap-2">
+                <Pressable className="flex-1 rounded-md border border-slate-200 bg-white px-3 py-3" onPress={() => openDatePicker(target)}>
+                  <Text className="text-slate-800">📅 {formatDisplayDate(iso)}</Text>
+                </Pressable>
+                <Pressable className="w-36 rounded-md border border-slate-200 bg-white px-3 py-3" onPress={() => openTimePicker(target)}>
+                  <Text className="text-slate-800">🕒 {formatDisplayTime(iso)}</Text>
+                </Pressable>
+              </View>
+            </View>
+          );
+        })}
 
-        {(['start', 'end'] as const).map((target) => (
-          <View key={target} className="rounded-lg border border-slate-100 bg-slate-50 p-3 gap-2">
-            <Text className="text-xs font-semibold uppercase text-slate-500">{target}</Text>
-            <Text className="text-base font-medium text-slate-800">
-              {formatDisplayDate(target === 'start' ? draft.startTime : draft.endTime)} • {formatDisplayTime(target === 'start' ? draft.startTime : draft.endTime)}
-            </Text>
-
-            <View className="flex-row gap-2">
-              <Pressable className="flex-1 rounded-md border border-slate-200 bg-white px-2 py-2" onPress={() => handleShift(target, 'day', -1)}>
-                <Text className="text-center text-slate-700">-1 day</Text>
-              </Pressable>
-              <Pressable className="flex-1 rounded-md border border-slate-200 bg-white px-2 py-2" onPress={() => handleShift(target, 'day', 1)}>
-                <Text className="text-center text-slate-700">+1 day</Text>
-              </Pressable>
+        {!!activeDateTarget && (
+          <View className="rounded-lg border border-blue-100 bg-blue-50 p-3 gap-2">
+            <View className="flex-row items-center justify-between">
+              <Pressable onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}><Text className="text-blue-700">‹ Prev</Text></Pressable>
+              <Text className="font-semibold text-slate-800">{calendarMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</Text>
+              <Pressable onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}><Text className="text-blue-700">Next ›</Text></Pressable>
             </View>
 
+            <View className="flex-row flex-wrap">
+              {WEEK_DAYS.map((wd) => <Text key={wd} style={{ width: '14.28%' }} className="text-center text-xs text-slate-500 pb-1">{wd}</Text>)}
+              {monthCells.map((day, index) => {
+                const isSelected = !!(day && selectedDate && day === selectedDate.getDate() && calendarMonth.getMonth() === selectedDate.getMonth() && calendarMonth.getFullYear() === selectedDate.getFullYear());
+                return (
+                  <Pressable key={`${day}-${index}`} style={{ width: '14.28%' }} className={`py-2 ${isSelected ? 'bg-blue-600 rounded-md' : ''}`} onPress={() => day && selectDate(day)} disabled={!day}>
+                    <Text className={`text-center ${isSelected ? 'text-white' : 'text-slate-700'}`}>{day ?? ''}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Pressable onPress={() => setActiveDateTarget(null)}><Text className="text-center text-blue-700">Done</Text></Pressable>
+          </View>
+        )}
+
+        {!!activeTimeTarget && (
+          <View className="rounded-lg border border-blue-100 bg-blue-50 p-3 gap-2">
+            <Text className="text-sm font-medium text-slate-700">Pick time</Text>
+            <TextInput className="rounded-md border border-slate-200 bg-white px-3 py-2" placeholder="HH:MM (24h)" value={timeInput} onChangeText={setTimeInput} />
+            <View className="flex-row flex-wrap gap-2">
+              {QUICK_TIMES.map((time) => (
+                <Pressable key={time} className="rounded-md border border-slate-200 bg-white px-3 py-2" onPress={() => applyTime(time)}>
+                  <Text className="text-slate-700">{time}</Text>
+                </Pressable>
+              ))}
+            </View>
             <View className="flex-row gap-2">
-              <Pressable className="flex-1 rounded-md border border-slate-200 bg-white px-2 py-2" onPress={() => handleShift(target, 'min', -15)}>
-                <Text className="text-center text-slate-700">-15 min</Text>
-              </Pressable>
-              <Pressable className="flex-1 rounded-md border border-slate-200 bg-white px-2 py-2" onPress={() => handleShift(target, 'min', 15)}>
-                <Text className="text-center text-slate-700">+15 min</Text>
-              </Pressable>
+              <Pressable className="flex-1 rounded-md bg-blue-600 px-3 py-2" onPress={() => applyTime(timeInput)}><Text className="text-center text-white">Apply</Text></Pressable>
+              <Pressable className="flex-1 rounded-md border border-slate-300 px-3 py-2" onPress={() => setActiveTimeTarget(null)}><Text className="text-center text-slate-700">Cancel</Text></Pressable>
             </View>
           </View>
-        ))}
+        )}
       </View>
 
       <Pressable className="bg-blue-600 rounded-xl px-4 py-3" onPress={onCreate}><Text className="text-white text-center">Create</Text></Pressable>
