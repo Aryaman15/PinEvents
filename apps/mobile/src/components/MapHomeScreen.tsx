@@ -8,6 +8,8 @@ import {
   Text,
   TextInput,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import type { FeatureCollection, Point } from "geojson";
 import { EventDetail, EventMessage, EventPin, JoinRequest } from "../types/app";
@@ -90,6 +92,17 @@ export function MapHomeScreen(props: Props) {
   } = props;
 
   const chatScrollRef = useRef<ScrollView | null>(null);
+
+  const joinRequestStatus = selectedEventDetail?.viewer?.joinRequestStatus;
+  const showRequestJoin =
+    selectedEventDetail?.type === "private" &&
+    !selectedEventDetail.viewer?.isMember;
+  const requestButtonLabel =
+    joinRequestStatus === "pending"
+      ? "Requested"
+      : joinRequestStatus === "rejected"
+        ? "Request again"
+        : "Request Join";
 
   useEffect(() => {
     if (!showChatScreen) return;
@@ -201,16 +214,21 @@ export function MapHomeScreen(props: Props) {
             >
               <Text className="text-white">Chat</Text>
             </Pressable>
-            {selectedEventDetail.type === "private" &&
-              !selectedEventDetail.viewer?.isMember && (
-                <Pressable
-                  className="bg-blue-600 rounded-lg px-3 py-2"
-                  onPress={onRequestJoin}
-                  disabled={isSubmittingJoinRequest}
-                >
-                  <Text className="text-white">Request Join</Text>
-                </Pressable>
-              )}
+            {showRequestJoin && (
+              <Pressable
+                className={`rounded-lg px-3 py-2 ${joinRequestStatus === "pending" ? "bg-slate-400" : "bg-blue-600"}`}
+                onPress={onRequestJoin}
+                disabled={
+                  isSubmittingJoinRequest || joinRequestStatus === "pending"
+                }
+              >
+                <Text className="text-white">
+                  {isSubmittingJoinRequest
+                    ? "Requesting..."
+                    : requestButtonLabel}
+                </Text>
+              </Pressable>
+            )}
             <Pressable
               className="bg-slate-200 rounded-lg px-3 py-2"
               onPress={onCloseDetail}
@@ -320,45 +338,51 @@ export function MapHomeScreen(props: Props) {
       )}
 
       {showChatScreen && (
-        <View className="absolute inset-0 bg-white pt-12">
-          <View className="flex-1 px-4 pb-10">
-            <Text className="text-xl font-bold mb-3">Event Chat</Text>
-            <ScrollView
-              ref={chatScrollRef}
-              className="flex-1 mb-3"
-              contentContainerStyle={{ paddingBottom: 10 }}
-            >
-              {chatMessages.map((message) => (
-                <View
-                  key={message.id}
-                  className={`mb-2 max-w-[85%] rounded-lg px-3 py-2 ${message.isMine ? "bg-blue-100 self-end" : "bg-slate-100 self-start"}`}
-                >
-                  <Text className="text-xs text-slate-500">
-                    {message.displayName}
-                  </Text>
-                  <Text>{message.text}</Text>
-                </View>
-              ))}
-            </ScrollView>
-            <View className="flex-row gap-2">
-              <TextInput
-                className="flex-1 rounded-lg border border-slate-300 px-3 py-2"
-                placeholder="Message"
-                value={chatDraft}
-                onChangeText={onChatDraft}
-              />
-              <Pressable
-                className="bg-blue-600 rounded-lg px-4 justify-center"
-                onPress={onSendMessage}
+        <KeyboardAvoidingView
+          className="absolute inset-0"
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 18}
+        >
+          <View className="flex-1 bg-white pt-12">
+            <View className="flex-1 px-4 pb-4">
+              <Text className="text-xl font-bold mb-3">Event Chat</Text>
+              <ScrollView
+                ref={chatScrollRef}
+                className="flex-1 mb-3"
+                contentContainerStyle={{ paddingBottom: 10 }}
               >
-                <Text className="text-white">Send</Text>
+                {chatMessages.map((message) => (
+                  <View
+                    key={message.id}
+                    className={`mb-2 max-w-[85%] rounded-lg px-3 py-2 ${message.isMine ? "bg-blue-100 self-end" : "bg-slate-100 self-start"}`}
+                  >
+                    <Text className="text-xs text-slate-500">
+                      {message.displayName}
+                    </Text>
+                    <Text>{message.text}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+              <View className="flex-row gap-2">
+                <TextInput
+                  className="flex-1 rounded-lg border border-slate-300 px-3 py-2"
+                  placeholder="Message"
+                  value={chatDraft}
+                  onChangeText={onChatDraft}
+                />
+                <Pressable
+                  className="bg-blue-600 rounded-lg px-4 justify-center"
+                  onPress={onSendMessage}
+                >
+                  <Text className="text-white">Send</Text>
+                </Pressable>
+              </View>
+              <Pressable className="mt-3 py-2" onPress={onCloseChat}>
+                <Text className="text-blue-600 text-center">Close chat</Text>
               </Pressable>
             </View>
-            <Pressable className="mt-3 py-2" onPress={onCloseChat}>
-              <Text className="text-blue-600 text-center">Close chat</Text>
-            </Pressable>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       )}
     </View>
   );

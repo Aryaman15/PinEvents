@@ -80,6 +80,8 @@ export default function App() {
   const [chatDraft, setChatDraft] = useState("");
 
   const [newCategoryInput, setNewCategoryInput] = useState("");
+  const [createCoordinate, setCreateCoordinate] =
+    useState<[number, number]>(initialCenter);
   const [eventDraft, setEventDraft] = useState<EventDraft>({
     title: "",
     description: "",
@@ -478,7 +480,7 @@ export default function App() {
       body: JSON.stringify({
         ...eventDraft,
         category: finalCategory,
-        location: { type: "Point", coordinates: centerCoordinate },
+        location: { type: "Point", coordinates: createCoordinate },
       }),
     });
     if (response.status === 401) {
@@ -498,6 +500,7 @@ export default function App() {
       endTime: new Date(Date.now() + 3600_000).toISOString(),
       imageUrls: [],
     });
+    setCreateCoordinate(centerCoordinate);
     await loadEvents(authToken, centerCoordinate);
   };
 
@@ -772,9 +775,12 @@ export default function App() {
           categoryInput={newCategoryInput}
           categories={availableCategories}
           isUploadingImages={isUploadingImages}
+          mapStyleUrl={mapStyleUrl}
+          selectedCoordinate={createCoordinate}
           errorMessage={errorMessage}
           onDraft={setEventDraft}
           onCategoryInput={setNewCategoryInput}
+          onSelectCoordinate={setCreateCoordinate}
           onPickImages={() =>
             handlePickImages().catch(() =>
               setErrorMessage("Unable to upload images."),
@@ -817,7 +823,10 @@ export default function App() {
           setSearchQuery("");
           setSearchCategory("");
         }}
-        onOpenCreate={() => setShowCreateEvent(true)}
+        onOpenCreate={() => {
+          setCreateCoordinate(centerCoordinate);
+          setShowCreateEvent(true);
+        }}
         onOpenProfile={() =>
           handleOpenProfile().catch(() =>
             setErrorMessage("Unable to load profile."),
