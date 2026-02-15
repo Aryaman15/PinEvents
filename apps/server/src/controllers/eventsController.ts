@@ -383,6 +383,11 @@ export const handleJoinRequest: RequestHandler = async (req, res) => {
   const { id, requestId } = paramsResult.data;
   const userId = req.userId;
   const { status } = req.body;
+  console.log("handleJoinRequest called", {
+    params: req.params,
+    body: req.body,
+    userId: req.userId,
+  });
 
   if (!["approved", "rejected"].includes(status)) {
     return res.status(400).json({ error: "Invalid status" });
@@ -580,5 +585,50 @@ export const listMessages: RequestHandler = async (req, res) => {
         displayName: displayNameById.get(message.userId.toString()) ?? "",
       }))
       .reverse(),
+  });
+};
+
+export const sendMessage: RequestHandler = async (req, res) => {
+  const paramsResult = eventIdParamSchema.safeParse(req.params);
+  if (!paramsResult.success) {
+    return res.status(400).json({ error: "Invalid event id" });
+  }
+
+  const { id } = paramsResult.data;
+  const userId = req.userId;
+  const { text } = req.body;
+
+  if (!userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  if (!text || typeof text !== "string" || !text.trim()) {
+    return res.status(400).json({ error: "Message text is required" });
+  }
+
+  const event = await Event.findById(id).lean<EventDocument>();
+  if (!event) {
+    return res.status(404).json({ error: "Event not found" });
+  }
+
+  const isAccepted = await isAcceptedMember(id, userId, event.acceptedMembers);
+
+  if (!isAccepted) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const message = await EventMessage.create({
+    eventId: event._id,
+    userId,
+    text: text.trim(),
+  });
+
+  return res.status(201).json({
+    message: {
+      id: message._id.toString(),
+      eventId: message.eventId.toString(),
+      text: message.text,
+      createdAt: message.createdAt,
+    },
   });
 };

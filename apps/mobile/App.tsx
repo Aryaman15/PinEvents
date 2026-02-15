@@ -528,6 +528,48 @@ export default function App() {
     setSelectedEventRequests(data.requests ?? []);
   };
 
+  // const handleRequestDecision = async (
+  //   requestId: string,
+  //   action: "approve" | "reject",
+  // ) => {
+  //   if (!authToken || !selectedEventDetail) {
+  //     return;
+  //   }
+  //   // if (!apiUrl) {
+  //   //   setErrorMessage("EXPO_PUBLIC_API_URL is not set.");
+  //   //   return;
+  //   // }
+
+  //   try {
+  //     const response = await fetch(
+  //       `${apiUrl}/events/${selectedEventDetail.id}/requests/${requestId}/${action}`,
+  //       {
+  //         method: "PATCH",
+  //         headers: {
+  //           Authorization: `Bearer ${authToken}`,
+  //         },
+  //       },
+  //     );
+
+  //     if (!response.ok) {
+  //       setErrorMessage("Unable to update request.");
+  //       return;
+  //     }
+
+  //     setSelectedEventRequests((prev) =>
+  //       prev.map((request) =>
+  //         request.id === requestId
+  //           ? {
+  //               ...request,
+  //               status: action === "approve" ? "approved" : "rejected",
+  //             }
+  //           : request,
+  //       ),
+  //     );
+  //   } catch (error) {
+  //     setErrorMessage("Unable to reach the server.");
+  //   }
+  // };
   const handleRequestDecision = async (
     requestId: string,
     action: "approved" | "rejected",
