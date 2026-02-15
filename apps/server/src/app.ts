@@ -34,6 +34,10 @@ export const createApp = () => {
   app.use("/auth", authRouter);
   app.use("/events", eventsRouter);
   app.use("/me", meRouter);
+  app.use((req, res, next) => {
+    console.log("Incoming request:", req.method, req.originalUrl);
+    next();
+  });
 
   return { app, allowedOrigins };
 };

@@ -587,6 +587,20 @@ export default function App() {
     setSelectedEventRequests(data.requests ?? []);
   };
 
+  //     setSelectedEventRequests((prev) =>
+  //       prev.map((request) =>
+  //         request.id === requestId
+  //           ? {
+  //               ...request,
+  //               status: action === "approve" ? "approved" : "rejected",
+  //             }
+  //           : request,
+  //       ),
+  //     );
+  //   } catch (error) {
+  //     setErrorMessage("Unable to reach the server.");
+  //   }
+  // };
   const handleRequestDecision = async (
     requestId: string,
     action: "approved" | "rejected",
