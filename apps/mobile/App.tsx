@@ -7,6 +7,7 @@ import { ActivityIndicator, BackHandler, Share, View } from "react-native";
 import { io, Socket } from "socket.io-client";
 import type { Feature, FeatureCollection, Point } from "geojson";
 import MapLibreGL from "@maplibre/maplibre-react-native";
+
 import { AuthScreen } from "./src/components/AuthScreen";
 import { CreateEventScreen } from "./src/components/CreateEventScreen";
 import { MapHomeScreen } from "./src/components/MapHomeScreen";
@@ -23,14 +24,19 @@ import {
   ViewerInfo,
 } from "./src/types/app";
 
-const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-const mapStyleUrl = process.env.EXPO_PUBLIC_MAP_STYLE_URL_2;
+MapLibreGL.setAccessToken(null);
+
+const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? "";
+const mapStyleUrl = process.env.EXPO_PUBLIC_MAP_STYLE_URL_2 ?? "";
+if (!apiUrl || !mapStyleUrl) {
+  console.error("Missing env vars", {
+    apiUrl,
+    mapStyleUrl,
+  });
+}
+
 const initialCenter: [number, number] = [-122.4194, 37.7749];
 const tokenKey = "authToken";
-
-if (!apiUrl) throw new Error("Missing EXPO_PUBLIC_API_URL in .env");
-if (!mapStyleUrl)
-  throw new Error("Missing EXPO_PUBLIC_MAP_STYLE_URL_2 in .env");
 
 const emptyProfile: Profile = {
   id: "",

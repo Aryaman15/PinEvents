@@ -9,29 +9,42 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://172.15.73.101:4000",
+        "EXPO_PUBLIC_MAP_STYLE_URL": "https://demotiles.maplibre.org/styles/osm-bright-gl-style/style.json",
+        "EXPO_PUBLIC_MAP_STYLE_URL_2": "https://api.maptiler.com/maps/streets-v4/style.json?key=UkfGJIzJRTu4ZQq0bmN7",
+        "EXPO_USE_PNPM": "true"
       }
     },
+
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
       },
       "env": {
-  "EXPO_USE_PNPM": "true"
-}
-
+        "EXPO_PUBLIC_API_URL": "http://172.15.73.101:4000",
+        "EXPO_PUBLIC_MAP_STYLE_URL": "https://demotiles.maplibre.org/styles/osm-bright-gl-style/style.json",
+        "EXPO_PUBLIC_MAP_STYLE_URL_2": "https://api.maptiler.com/maps/streets-v4/style.json?key=UkfGJIzJRTu4ZQq0bmN7",
+        "EXPO_USE_PNPM": "true"
+      }
     },
+
     "production": {
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
       },
       "env": {
-  "EXPO_USE_PNPM": "true"
-}
-
+        "EXPO_PUBLIC_API_URL": "http://172.15.73.101:4000",
+        "EXPO_PUBLIC_MAP_STYLE_URL": "https://demotiles.maplibre.org/styles/osm-bright-gl-style/style.json",
+        "EXPO_PUBLIC_MAP_STYLE_URL_2": "https://api.maptiler.com/maps/streets-v4/style.json?key=UkfGJIzJRTu4ZQq0bmN7",
+        "EXPO_USE_PNPM": "true"
+      }
     }
   },
+
   "submit": {
     "production": {}
   }
