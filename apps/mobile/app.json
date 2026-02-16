@@ -20,8 +20,9 @@
     },
     "android": {
       "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -43,6 +44,11 @@
           "photosPermission": "Allow EventPins to access your photos to upload event images."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c5bae81a-292a-4055-ab79-474128dde5b8"
+      }
+    }
   }
 }
