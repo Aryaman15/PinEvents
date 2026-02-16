@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "bbecc210-f579-433d-8281-ba69f4b75e6f"
+      }
+    },
+    "android": {
+      "package": "com.heatblasteraa.pinevents"
+    }
+  }
+}
