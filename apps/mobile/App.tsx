@@ -189,6 +189,15 @@ export default function App() {
     socketRef.current?.disconnect();
     const socket = io(apiUrl, { auth: { token: authToken } });
     socketRef.current = socket;
+    socket.on("connect_error", (error: Error) => {
+      const normalizedMessage = error.message.toLowerCase();
+      if (normalizedMessage.includes("unauthorized")) {
+        setErrorMessage("Session expired. Please log in again.");
+        handleLogout().catch(() => undefined);
+        return;
+      }
+      setErrorMessage("Unable to connect to event chat.");
+    });
     socket.on("message", (message: EventMessage) =>
       setChatMessages((prev) => [
         ...prev,
@@ -200,12 +209,15 @@ export default function App() {
         },
       ]),
     );
-    socket.emit(
-      "join",
-      chatEventId,
-      (response: { error?: string }) =>
-        response?.error && setErrorMessage(response.error),
-    );
+    socket.emit("join", chatEventId, (response: { error?: string }) => {
+      if (!response?.error) return;
+      if (response.error.toLowerCase().includes("unauthorized")) {
+        setErrorMessage("Session expired. Please log in again.");
+        handleLogout().catch(() => undefined);
+        return;
+      }
+      setErrorMessage(response.error);
+    });
     return () => {
       socket.disconnect();
       socketRef.current = null;
