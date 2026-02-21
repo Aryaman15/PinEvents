@@ -1,9 +1,14 @@
 import { StatusBar } from "expo-status-bar";
 import * as SecureStore from "expo-secure-store";
-import { NativeModulesProxy } from "expo-modules-core";
 import * as Location from "expo-location";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, BackHandler, Share, View } from "react-native";
+import {
+  ActivityIndicator,
+  BackHandler,
+  Linking,
+  Share,
+  View,
+} from "react-native";
 import { io, Socket } from "socket.io-client";
 import type { Feature, FeatureCollection, Point } from "geojson";
 import MapLibreGL from "@maplibre/maplibre-react-native";
@@ -375,13 +380,6 @@ export default function App() {
     const remainingSlots = 4 - eventDraft.imageUrls.length;
     if (remainingSlots <= 0) return;
 
-    if (!NativeModulesProxy.ExponentImagePicker) {
-      setErrorMessage(
-        "This build does not include the image picker native module. Rebuild your dev client with: npx expo run:android",
-      );
-      return;
-    }
-
     let ImagePicker: any;
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -398,6 +396,14 @@ export default function App() {
       const permission =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (permission.status !== "granted") {
+        if (!permission.canAskAgain) {
+          setErrorMessage(
+            "Photo access is blocked. Please enable photo access for EventPins in your phone settings.",
+          );
+          await Linking.openSettings();
+          return;
+        }
+
         setErrorMessage("Please allow photo access to upload event images.");
         return;
       }
