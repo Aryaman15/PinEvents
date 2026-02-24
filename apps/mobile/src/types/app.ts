@@ -1,5 +1,10 @@
-export type AuthMode = 'login' | 'signup';
-export type EventPrivacy = 'public' | 'private';
+export type AuthMode = "login" | "signup";
+export type EventPrivacy = "public" | "private";
+
+export type EventImage = {
+  url: string;
+  publicId: string;
+};
 
 export type Profile = {
   id: string;
@@ -19,16 +24,16 @@ export type EventPin = {
   endTime: string;
   createdAt: string;
   createdBy: string;
-  imageUrls?: string[];
-  location?: { type: 'Point'; coordinates: [number, number] };
-  redactedLocation?: { type: 'Point'; coordinates: [number, number] };
+  images: EventImage[];
+  location?: { type: "Point"; coordinates: [number, number] };
+  redactedLocation?: { type: "Point"; coordinates: [number, number] };
 };
 
 export type ViewerInfo = {
   isMember: boolean;
-  role: 'admin' | 'member' | null;
-  status: 'accepted' | null;
-  joinRequestStatus: 'pending' | 'approved' | 'rejected' | null;
+  role: "admin" | "member" | null;
+  status: "accepted" | null;
+  joinRequestStatus: "pending" | "approved" | "rejected" | null;
 };
 
 export type EventDetail = EventPin & {
@@ -39,10 +44,10 @@ export type JoinRequest = {
   id: string;
   eventId: string;
   userId: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: "pending" | "approved" | "rejected";
   createdAt: string;
   createdBy: string;
-  imageUrls?: string[];
+  images: EventImage[];
 };
 
 export type EventMessage = {
@@ -51,7 +56,7 @@ export type EventMessage = {
   text: string;
   createdAt: string;
   createdBy: string;
-  imageUrls?: string[];
+  images: EventImage[];
   displayName: string;
   isMine?: boolean;
 };
@@ -63,5 +68,5 @@ export type EventDraft = {
   type: EventPrivacy;
   startTime: string;
   endTime: string;
-  imageUrls: string[];
+  images: EventImage[];
 };

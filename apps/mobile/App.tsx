@@ -1,3 +1,4 @@
+import * as ImagePicker from "expo-image-picker";
 import { StatusBar } from "expo-status-bar";
 import * as SecureStore from "expo-secure-store";
 import * as Location from "expo-location";
@@ -94,7 +95,7 @@ export default function App() {
     type: "public",
     startTime: new Date().toISOString(),
     endTime: new Date(Date.now() + 3600_000).toISOString(),
-    imageUrls: [],
+    images: [],
   });
 
   const socketRef = useRef<Socket | null>(null);
@@ -387,95 +388,191 @@ export default function App() {
     setIsLoadingEvents(false);
   };
 
+  // const handlePickImages = async () => {
+  //   if (!authToken) return;
+  //   const remainingSlots = 4 - eventDraft.images.length;
+  //   if (remainingSlots <= 0) return;
+
+  //   // let ImagePicker: any;
+  //   // try {
+  //   //   // eslint-disable-next-line @typescript-eslint/no-var-requires
+  //   //   ImagePicker = require("expo-image-picker");
+  //   // } catch (err) {
+  //   //   console.log("IMAGE PICKER ERROR:", err);
+  //   //   setErrorMessage("Image picker failed: " + String(err));
+  //   //   return;
+  //   // }
+  //   // setErrorMessage(
+  //   //   "Image picker is unavailable in this dev build. Rebuild the development client after installing expo-image-picker.",
+  //   // );
+
+  //   // let result: any;
+  //   // try {
+  //   //   // const permission =
+  //   //   //   await ImagePicker.requestMediaLibraryPermissionsAsync();
+  //   //   // if (permission.status !== "granted") {
+  //   //   //   if (!permission.canAskAgain) {
+  //   //   //     setErrorMessage(
+  //   //   //       "Photo access is blocked. Please enable photo access for EventPins in your phone settings.",
+  //   //   //     );
+  //   //   //     await Linking.openSettings();
+  //   //   //     return;
+  //   //   //   }
+
+  //   //   //   setErrorMessage("Please allow photo access to upload event images.");
+  //   //   //   return;
+  //   //   // }
+
+  //   //   result = await ImagePicker.launchImageLibraryAsync({
+  //   //     // mediaTypes: ImagePicker.MediaTypeOptions.Images,
+  //   //     mediaTypes: ImagePicker.MediaTypeOptions.Images,
+  //   //     quality: 0.8,
+  //   //     allowsMultipleSelection: true,
+  //   //     selectionLimit: remainingSlots,
+  //   //   });
+  //   // } catch {
+  //   //   setErrorMessage(
+  //   //     "Image picker failed to open. Please rebuild your development client and try again.",
+  //   //   );
+  //   //   return;
+  //   // }
+  //   let result: any;
+  //   const permission = await ImagePicker.getMediaLibraryPermissionsAsync();
+
+  //   if (!permission.granted) {
+  //     const ask = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+  //     if (!ask.granted) {
+  //       if (!ask.canAskAgain) {
+  //         setErrorMessage(
+  //           "Photo access blocked. Please enable it in settings.",
+  //         );
+  //         await Linking.openSettings();
+  //       } else {
+  //         setErrorMessage("Photo permission is required to upload images.");
+  //       }
+  //       return;
+  //     }
+  //   }
+
+  //   if (result.canceled || !result.assets.length) return;
+
+  //   const formData = new FormData();
+  //   result.assets
+  //     .slice(0, remainingSlots)
+  //     .forEach((asset: any, index: number) => {
+  //       const extension = (asset.uri.split(".").pop() || "jpg").toLowerCase();
+  //       const type = asset.mimeType || `image/${extension}`;
+  //       formData.append("images", {
+  //         uri: asset.uri,
+  //         name: `event-image-${Date.now()}-${index}.${extension}`,
+  //         type,
+  //       } as unknown as Blob);
+  //     });
+
+  //   setIsUploadingImages(true);
+  //   const response = await fetch(`${apiUrl}/events/uploads`, {
+  //     method: "POST",
+  //     headers: { Authorization: `Bearer ${authToken}` },
+  //     body: formData,
+  //   });
+
+  //   if (response.status === 401) {
+  //     setErrorMessage("Session expired. Please log in again.");
+  //     setIsUploadingImages(false);
+  //     await handleLogout();
+  //     return;
+  //   }
+
+  //   if (!response.ok) {
+  //     setIsUploadingImages(false);
+  //     return setErrorMessage("Unable to upload images.");
+  //   }
+
+  //   const data = (await response.json()) as {
+  //     images?: { url: string; publicId: string }[];
+  //   };
+
+  //   const uploadedImages = data.images ?? [];
+
+  //   setEventDraft((prev) => ({
+  //     ...prev,
+  //     images: [...prev.images, ...uploadedImages].slice(0, 4),
+  //   }));
+  //   setIsUploadingImages(false);
+  // };
   const handlePickImages = async () => {
     if (!authToken) return;
-    const remainingSlots = 4 - eventDraft.imageUrls.length;
+
+    const remainingSlots = 4 - eventDraft.images.length;
     if (remainingSlots <= 0) return;
 
-    let ImagePicker: any;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      ImagePicker = require("expo-image-picker");
-    } catch {
-      setErrorMessage(
-        "Image picker is unavailable in this dev build. Rebuild the development client after installing expo-image-picker.",
-      );
-      return;
+    const currentPermission =
+      await ImagePicker.getMediaLibraryPermissionsAsync();
+
+    if (!currentPermission.granted) {
+      const ask = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!ask.granted) {
+        if (!ask.canAskAgain) {
+          setErrorMessage("Photo access blocked. Enable it in settings.");
+          await Linking.openSettings();
+        } else {
+          setErrorMessage("Photo permission is required.");
+        }
+        return;
+      }
     }
 
-    let result: any;
-    try {
-      const permission =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (permission.status !== "granted") {
-        if (!permission.canAskAgain) {
-          setErrorMessage(
-            "Photo access is blocked. Please enable photo access for EventPins in your phone settings.",
-          );
-          await Linking.openSettings();
-          return;
-        }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsMultipleSelection: true,
+      selectionLimit: remainingSlots,
+    });
 
-        setErrorMessage("Please allow photo access to upload event images.");
+    if (result.canceled || !result.assets?.length) return;
+
+    const formData = new FormData();
+
+    result.assets.forEach((asset: any, index: number) => {
+      const extension = (asset.uri.split(".").pop() || "jpg").toLowerCase();
+      const type = asset.mimeType || `image/${extension}`;
+
+      formData.append("images", {
+        uri: asset.uri,
+        name: `event-${Date.now()}-${index}.${extension}`,
+        type,
+      } as any);
+    });
+
+    setIsUploadingImages(true);
+
+    try {
+      const response = await fetch(`${apiUrl}/events/uploads`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authToken}` },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        setErrorMessage("Upload failed.");
         return;
       }
 
-      result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
-        allowsMultipleSelection: true,
-        selectionLimit: remainingSlots,
-      });
-    } catch {
-      setErrorMessage(
-        "Image picker failed to open. Please rebuild your development client and try again.",
-      );
-      return;
-    }
+      const data = await response.json();
 
-    if (result.canceled || !result.assets.length) return;
-
-    const formData = new FormData();
-    result.assets
-      .slice(0, remainingSlots)
-      .forEach((asset: any, index: number) => {
-        const extension = (asset.uri.split(".").pop() || "jpg").toLowerCase();
-        const type = asset.mimeType || `image/${extension}`;
-        formData.append("images", {
-          uri: asset.uri,
-          name: `event-image-${Date.now()}-${index}.${extension}`,
-          type,
-        } as unknown as Blob);
-      });
-
-    setIsUploadingImages(true);
-    const response = await fetch(`${apiUrl}/events/uploads`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${authToken}` },
-      body: formData,
-    });
-
-    if (response.status === 401) {
-      setErrorMessage("Session expired. Please log in again.");
+      setEventDraft((prev) => ({
+        ...prev,
+        images: [...prev.images, ...(data.images ?? [])].slice(0, 4),
+      }));
+    } catch (err) {
+      console.log("UPLOAD ERROR:", err);
+      setErrorMessage("Upload crashed.");
+    } finally {
       setIsUploadingImages(false);
-      await handleLogout();
-      return;
     }
-
-    if (!response.ok) {
-      setIsUploadingImages(false);
-      return setErrorMessage("Unable to upload images.");
-    }
-
-    const data = (await response.json()) as { imageUrls?: string[] };
-    const uploadedUrls = data.imageUrls ?? [];
-    setEventDraft((prev) => ({
-      ...prev,
-      imageUrls: [...prev.imageUrls, ...uploadedUrls].slice(0, 4),
-    }));
-    setIsUploadingImages(false);
   };
-
   const handleCreateEvent = async () => {
     if (!authToken) return;
     const finalCategory = newCategoryInput.trim() || eventDraft.category.trim();
@@ -516,7 +613,7 @@ export default function App() {
       type: "public",
       startTime: new Date().toISOString(),
       endTime: new Date(Date.now() + 3600_000).toISOString(),
-      imageUrls: [],
+      images: [],
     });
     setCreateCoordinate(centerCoordinate);
     await loadEvents(authToken, centerCoordinate);
