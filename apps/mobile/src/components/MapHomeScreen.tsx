@@ -259,7 +259,7 @@ export function MapHomeScreen(props: Props) {
                 Ends: {formatDateTime(selectedEventDetail.endTime)}
               </Text>
 
-              {!!selectedEventDetail.imageUrls?.length && (
+              {!!selectedEventDetail.images?.length && (
                 <View className="gap-2">
                   <Text className="font-semibold text-slate-700">Images</Text>
                   <ScrollView
@@ -267,10 +267,10 @@ export function MapHomeScreen(props: Props) {
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={{ gap: 10 }}
                   >
-                    {selectedEventDetail.imageUrls.map((url, index) => (
+                    {selectedEventDetail.images?.map((img, index) => (
                       <Image
-                        key={`${url}-${index}`}
-                        source={{ uri: url }}
+                        key={`${img.publicId}-${index}`}
+                        source={{ uri: img.url }}
                         style={{ width: 240, height: 150, borderRadius: 12 }}
                         resizeMode="cover"
                       />

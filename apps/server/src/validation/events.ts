@@ -7,6 +7,16 @@ const locationSchema = z.object({
     .refine((coords) => coords.length === 2, "Coordinates must be [lng, lat]."),
 });
 
+// export const createEventSchema = z.object({
+//   title: z.string().min(1),
+//   description: z.string().min(1),
+//   category: z.string().min(1),
+//   type: z.enum(["public", "private"]),
+//   startTime: z.string().datetime(),
+//   endTime: z.string().datetime(),
+//   imageUrls: z.array(z.string().url()).max(4).optional(),
+//   location: locationSchema,
+// });
 export const createEventSchema = z.object({
   title: z.string().min(1),
   description: z.string().min(1),
@@ -14,7 +24,15 @@ export const createEventSchema = z.object({
   type: z.enum(["public", "private"]),
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
-  imageUrls: z.array(z.string().url()).max(4).optional(),
+  images: z
+    .array(
+      z.object({
+        url: z.string().url(),
+        publicId: z.string().min(1),
+      }),
+    )
+    .max(4)
+    .optional(),
   location: locationSchema,
 });
 
@@ -22,8 +40,14 @@ const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/);
 
 export const eventsNearQuerySchema = z.object({
   lat: z.string().transform(Number).refine(Number.isFinite, "Invalid latitude"),
-  lng: z.string().transform(Number).refine(Number.isFinite, "Invalid longitude"),
-  radiusKm: z.string().transform(Number).refine(Number.isFinite, "Invalid radius"),
+  lng: z
+    .string()
+    .transform(Number)
+    .refine(Number.isFinite, "Invalid longitude"),
+  radiusKm: z
+    .string()
+    .transform(Number)
+    .refine(Number.isFinite, "Invalid radius"),
   q: z.string().optional(),
   category: z.string().optional(),
 });

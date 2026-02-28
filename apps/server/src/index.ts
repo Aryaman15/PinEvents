@@ -1,10 +1,11 @@
 import dotenv from "dotenv";
+
+const result = dotenv.config();
+console.log("DOTENV RESULT:", result);
 import http from "http";
 import mongoose from "mongoose";
 import { createApp } from "./app";
 import { configureSockets } from "./socket";
-
-dotenv.config();
 
 const { app, allowedOrigins } = createApp();
 const port = Number(process.env.PORT ?? 4000);

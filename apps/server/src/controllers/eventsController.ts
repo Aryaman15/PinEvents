@@ -17,6 +17,8 @@ import {
   isAdminForEvent,
 } from "../services/eventMembership.service";
 import { blurLocation } from "../utils/geo";
+import cloudinary from "../config/cloudinary";
+import streamifier from "streamifier";
 
 export const createEvent: RequestHandler = async (req, res) => {
   const userId = req.userId;
@@ -69,7 +71,7 @@ export const createEvent: RequestHandler = async (req, res) => {
       location: event.location,
       createdBy: event.createdBy,
       createdAt: event.createdAt,
-      imageUrls: event.imageUrls ?? [],
+      images: event.images ?? [],
     },
   });
 };
@@ -144,7 +146,7 @@ export const getEventsNear: RequestHandler = async (req, res) => {
       endTime: event.endTime,
       createdBy: event.createdBy,
       createdAt: event.createdAt,
-      imageUrls: event.imageUrls ?? [],
+      images: event.images ?? [],
     };
 
     if (shouldReveal) {
@@ -214,7 +216,7 @@ export const getEventById: RequestHandler = async (req, res) => {
       endTime: event.endTime,
       createdBy: event.createdBy,
       createdAt: event.createdAt,
-      imageUrls: event.imageUrls ?? [],
+      images: event.images ?? [],
       ...(shouldReveal
         ? { location: event.location }
         : {
@@ -255,6 +257,12 @@ export const deleteEvent: RequestHandler = async (req, res) => {
     return res.status(403).json({ error: "Forbidden" });
   }
 
+  if (event.images?.length) {
+    await Promise.all(
+      event.images.map((img) => cloudinary.uploader.destroy(img.publicId)),
+    );
+  }
+
   await Promise.all([
     Event.deleteOne({ _id: event._id }),
     EventMember.deleteMany({ eventId: event._id }),
@@ -265,22 +273,117 @@ export const deleteEvent: RequestHandler = async (req, res) => {
   return res.status(200).json({ ok: true });
 };
 
+// export const uploadEventImages: RequestHandler = async (req, res) => {
+//   const userId = req.userId;
+
+//   if (!userId) {
+//     return res.status(401).json({ error: "Unauthorized" });
+//   }
+
+//   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+//   if (!files.length) {
+//     return res.status(400).json({ error: "No images uploaded" });
+//   }
+
+//   const baseUrl = `${req.protocol}://${req.get("host")}`;
+//   const imageUrls = files.map((file) => `${baseUrl}/uploads/${file.filename}`);
+
+//   return res.status(201).json({ imageUrls });
+// };
+
+// export const uploadEventImages: RequestHandler = async (req, res) => {
+//   const userId = req.userId;
+
+//   if (!userId) {
+//     return res.status(401).json({ error: "Unauthorized" });
+//   }
+
+//   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+//   console.log("FILES:", req.files);
+
+//   if (!files.length) {
+//     return res.status(400).json({ error: "No images uploaded" });
+//   }
+
+//   try {
+//     const uploadPromises = files.map((file) => {
+//       return new Promise<{ url: string; publicId: string }>(
+//         (resolve, reject) => {
+//           const stream = cloudinary.uploader.upload_stream(
+//             { folder: "event_images" },
+//             (error, result) => {
+//               if (error || !result) return reject(error);
+
+//               resolve({
+//                 url: result.secure_url,
+//                 publicId: result.public_id,
+//               });
+//             },
+//           );
+
+//           streamifier.createReadStream(file.buffer).pipe(stream);
+//         },
+//       );
+//     });
+
+//     const uploadedImages = await Promise.all(uploadPromises);
+
+//     return res.status(201).json({ images: uploadedImages });
+//   } catch (error: any) {
+//     return res.status(500).json({ error: error.message });
+//   }
+// };
 export const uploadEventImages: RequestHandler = async (req, res) => {
   const userId = req.userId;
-
   if (!userId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+
+  console.log("FILES:", files);
+
   if (!files.length) {
     return res.status(400).json({ error: "No images uploaded" });
   }
 
-  const baseUrl = `${req.protocol}://${req.get("host")}`;
-  const imageUrls = files.map((file) => `${baseUrl}/uploads/${file.filename}`);
+  try {
+    const uploadPromises = files.map((file) => {
+      return new Promise<{ url: string; publicId: string }>(
+        (resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            { folder: "event_images" },
+            (error, result) => {
+              console.log("CLOUDINARY CALLBACK:", { error, result });
 
-  return res.status(201).json({ imageUrls });
+              if (error) {
+                console.error("CLOUDINARY ERROR:", error);
+                return reject(error);
+              }
+
+              if (!result) {
+                return reject(new Error("No result from Cloudinary"));
+              }
+
+              resolve({
+                url: result.secure_url,
+                publicId: result.public_id,
+              });
+            },
+          );
+
+          streamifier.createReadStream(file.buffer).pipe(stream);
+        },
+      );
+    });
+
+    const uploadedImages = await Promise.all(uploadPromises);
+
+    return res.status(201).json({ images: uploadedImages });
+  } catch (error: any) {
+    console.error("UPLOAD CONTROLLER ERROR:", error);
+    return res.status(500).json({ error: error?.message || "Unknown error" });
+  }
 };
 
 export const requestJoin: RequestHandler = async (req, res) => {

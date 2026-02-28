@@ -188,27 +188,52 @@ export function CreateEventScreen({
     setActiveTimeTarget(null);
   };
 
+  // const addImageUrl = () => {
+  //   const trimmed = imageInput.trim();
+  //   if (
+  //     !trimmed ||
+  //     draft.images.length >= 4 ||
+  //     draft.images.includes(trimmed)
+  //   ) {
+  //     return;
+  //   }
+
+  //   onDraft({
+  //     ...draft,
+  //     images: [...draft.images, trimmed],
+  //   });
+  //   setImageInput("");
+  // };
   const addImageUrl = () => {
     const trimmed = imageInput.trim();
-    if (
-      !trimmed ||
-      draft.imageUrls.length >= 4 ||
-      draft.imageUrls.includes(trimmed)
-    ) {
-      return;
-    }
+    if (!trimmed || draft.images.length >= 4) return;
+
+    if (draft.images.some((img) => img.url === trimmed)) return;
 
     onDraft({
       ...draft,
-      imageUrls: [...draft.imageUrls, trimmed],
+      images: [
+        ...draft.images,
+        {
+          url: trimmed,
+          publicId: `manual-${Date.now()}`,
+        },
+      ],
     });
+
     setImageInput("");
   };
 
-  const removeImageUrl = (url: string) => {
+  // const removeImageUrl = (url: string) => {
+  //   onDraft({
+  //     ...draft,
+  //     images: draft.images.filter((item) => item !== url),
+  //   });
+  // };
+  const removeImage = (publicId: string) => {
     onDraft({
       ...draft,
-      imageUrls: draft.imageUrls.filter((item) => item !== url),
+      images: draft.images.filter((img) => img.publicId !== publicId),
     });
   };
 
@@ -293,12 +318,12 @@ export function CreateEventScreen({
       <View className="rounded-xl border border-slate-200 bg-white p-3 gap-3">
         <View className="flex-row items-center justify-between">
           <Text className="text-sm font-semibold text-slate-700">
-            Event photos ({draft.imageUrls.length}/4)
+            Event photos ({draft.images.length}/4)
           </Text>
           <Pressable
             className="rounded-md bg-blue-600 px-3 py-2"
             onPress={onPickImages}
-            disabled={isUploadingImages || draft.imageUrls.length >= 4}
+            disabled={isUploadingImages || draft.images.length >= 4}
           >
             <Text className="text-white">
               {isUploadingImages ? "Uploading..." : "Upload photos"}
@@ -321,30 +346,30 @@ export function CreateEventScreen({
           <Pressable
             className="rounded-md bg-slate-800 px-3 py-2"
             onPress={addImageUrl}
-            disabled={draft.imageUrls.length >= 4}
+            disabled={draft.images.length >= 4}
           >
             <Text className="text-white">Add link</Text>
           </Pressable>
         </View>
-        {!!draft.imageUrls.length && (
+        {!!draft.images.length && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ gap: 8 }}
           >
-            {draft.imageUrls.map((url) => (
+            {draft.images.map((img) => (
               <View
-                key={url}
+                key={img.publicId}
                 className="w-36 rounded-lg border border-slate-200 bg-white p-2"
               >
                 <Image
-                  source={{ uri: url }}
+                  source={{ uri: img.url }}
                   className="h-20 w-full rounded-md bg-slate-100"
                   resizeMode="cover"
                 />
                 <Pressable
                   className="mt-2 rounded-md bg-red-50 px-2 py-1"
-                  onPress={() => removeImageUrl(url)}
+                  onPress={() => removeImage(img.publicId)}
                 >
                   <Text className="text-center text-xs text-red-600">
                     Remove
@@ -368,12 +393,23 @@ export function CreateEventScreen({
             mapStyle={mapStyleUrl}
             style={{ flex: 1 }}
             onPress={(event) => {
-              const coordinates = event.geometry?.coordinates as
-                | [number, number]
-                | undefined;
+              const geometry = event.geometry;
+
+              if (!geometry || geometry.type !== "Point") return;
+
+              const coordinates = geometry.coordinates;
+
               if (!coordinates || coordinates.length !== 2) return;
+
               onSelectCoordinate([coordinates[0], coordinates[1]]);
             }}
+            // onPress={(event) => {
+            //   const coordinates = event.geometry?.coordinates as
+            //     | [number, number]
+            //     | undefined;
+            //   if (!coordinates || coordinates.length !== 2) return;
+            //   onSelectCoordinate([coordinates[0], coordinates[1]]);
+            // }}
           >
             <MapLibreGL.Camera
               zoomLevel={13}
