@@ -1,5 +1,5 @@
 import MapLibreGL from "@maplibre/maplibre-react-native";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -92,10 +92,14 @@ export function MapHomeScreen(props: Props) {
   } = props;
 
   const chatScrollRef = useRef<ScrollView | null>(null);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
   const joinRequestStatus = selectedEventDetail?.viewer?.joinRequestStatus;
   const showRequestJoin =
     selectedEventDetail?.type === "private" &&
+    !selectedEventDetail.viewer?.isMember;
+  const showPublicJoin =
+    selectedEventDetail?.type === "public" &&
     !selectedEventDetail.viewer?.isMember;
   const requestButtonLabel =
     joinRequestStatus === "pending"
@@ -103,6 +107,13 @@ export function MapHomeScreen(props: Props) {
       : joinRequestStatus === "rejected"
         ? "Request again"
         : "Request Join";
+  const categorySuggestions = useMemo(() => {
+    const query = searchCategory.trim().toLowerCase();
+    if (!query) return categories;
+    return categories.filter((category) =>
+      category.toLowerCase().includes(query),
+    );
+  }, [categories, searchCategory]);
 
   useEffect(() => {
     if (!showChatScreen) return;
@@ -142,17 +153,49 @@ export function MapHomeScreen(props: Props) {
           />
           <Pressable
             className="bg-slate-800 rounded-lg px-3 justify-center"
-            onPress={onClearSearch}
+            onPress={() => {
+              onClearSearch();
+              setShowCategoryDropdown(false);
+            }}
           >
             <Text className="text-white">Clear</Text>
           </Pressable>
         </View>
-        <TextInput
-          className="rounded-lg border border-slate-300 px-3 py-2"
-          placeholder="Category"
-          value={searchCategory}
-          onChangeText={onSearchCategory}
-        />
+        <View>
+          <TextInput
+            className="rounded-lg border border-slate-300 px-3 py-2"
+            placeholder="Category"
+            value={searchCategory}
+            onFocus={() => setShowCategoryDropdown(true)}
+            onChangeText={(value) => {
+              onSearchCategory(value);
+              setShowCategoryDropdown(true);
+            }}
+          />
+          {showCategoryDropdown && (
+            <View className="mt-1 max-h-36 rounded-lg border border-slate-200 bg-white">
+              <ScrollView keyboardShouldPersistTaps="handled">
+                {categorySuggestions.map((category) => (
+                  <Pressable
+                    key={category}
+                    className="px-3 py-2"
+                    onPress={() => {
+                      onSearchCategory(category);
+                      setShowCategoryDropdown(false);
+                    }}
+                  >
+                    <Text className="text-slate-700">{category}</Text>
+                  </Pressable>
+                ))}
+                {!categorySuggestions.length && (
+                  <Text className="px-3 py-2 text-slate-500">
+                    No categories found
+                  </Text>
+                )}
+              </ScrollView>
+            </View>
+          )}
+        </View>
         {!!categories.length && (
           <Text className="text-xs text-slate-500">
             Categories: {categories.join(", ")}
@@ -229,6 +272,17 @@ export function MapHomeScreen(props: Props) {
                 </Text>
               </Pressable>
             )}
+            {showPublicJoin && (
+              <Pressable
+                className="rounded-lg bg-blue-600 px-3 py-2"
+                onPress={onRequestJoin}
+                disabled={isSubmittingJoinRequest}
+              >
+                <Text className="text-white">
+                  {isSubmittingJoinRequest ? "Joining..." : "Join event"}
+                </Text>
+              </Pressable>
+            )}
             <Pressable
               className="bg-slate-200 rounded-lg px-3 py-2"
               onPress={onCloseDetail}
@@ -288,7 +342,8 @@ export function MapHomeScreen(props: Props) {
                       className="flex-row items-center justify-between rounded-lg border border-slate-200 px-2 py-2"
                     >
                       <Text className="text-xs">
-                        {request.userId} ({request.status})
+                        {request.userDisplayName ?? request.userId} (
+                        {request.status})
                       </Text>
                       <View className="flex-row gap-2">
                         <Pressable

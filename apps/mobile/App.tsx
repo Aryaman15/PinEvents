@@ -624,6 +624,9 @@ export default function App() {
   };
   const handleCreateEvent = async () => {
     if (!authToken) return;
+    if (!eventDraft.description.trim()) {
+      return setErrorMessage("Description is mandatory");
+    }
     const finalCategory = newCategoryInput.trim() || eventDraft.category.trim();
     if (!finalCategory) return setErrorMessage("Please choose a category.");
 
@@ -652,7 +655,13 @@ export default function App() {
       await handleLogout();
       return;
     }
-    if (!response.ok) return setErrorMessage("Unable to create event.");
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      return setErrorMessage(data.error ?? "Unable to create event.");
+    }
+    setErrorMessage("");
     setShowCreateEvent(false);
     setNewCategoryInput("");
     setEventDraft({
@@ -713,26 +722,39 @@ export default function App() {
     }
     if (!response.ok) {
       setIsSubmittingJoinRequest(false);
-      return setErrorMessage("Unable to request access.");
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      return setErrorMessage(data.error ?? "Unable to request access.");
     }
     const data = (await response.json()) as {
       joinRequest?: { status?: string };
     };
+    const nextStatus = data.joinRequest?.status as
+      | ViewerInfo["joinRequestStatus"]
+      | "approved"
+      | undefined;
     setSelectedEventDetail((prev) =>
       prev
         ? {
             ...prev,
             viewer: {
-              isMember: prev.viewer?.isMember ?? false,
+              isMember:
+                nextStatus === "approved" ? true : (prev.viewer?.isMember ?? false),
               role: prev.viewer?.role ?? null,
-              status: prev.viewer?.status ?? null,
+              status:
+                nextStatus === "approved"
+                  ? "accepted"
+                  : (prev.viewer?.status ?? null),
               joinRequestStatus:
-                (data.joinRequest?.status as ViewerInfo["joinRequestStatus"]) ??
-                "pending",
+                nextStatus === "approved" ? null : (nextStatus ?? "pending"),
             },
           }
         : prev,
     );
+    if (nextStatus === "approved") {
+      await loadEvents(authToken, centerCoordinate, searchQuery, searchCategory);
+    }
     setIsSubmittingJoinRequest(false);
   };
 
@@ -788,9 +810,7 @@ export default function App() {
     }
     if (!response.ok) return setErrorMessage("Unable to update request.");
     setSelectedEventRequests((prev) =>
-      prev.map((request) =>
-        request.id === requestId ? { ...request, status: action } : request,
-      ),
+      prev.filter((request) => request.id !== requestId),
     );
   };
 
@@ -969,7 +989,10 @@ export default function App() {
               setErrorMessage("Unable to reach the server."),
             )
           }
-          onBack={() => setShowCreateEvent(false)}
+          onBack={() => {
+            setErrorMessage("");
+            setShowCreateEvent(false);
+          }}
         />
         <StatusBar style="dark" />
       </>
@@ -1003,6 +1026,7 @@ export default function App() {
         }}
         onOpenCreate={() => {
           setCreateCoordinate(centerCoordinate);
+          setErrorMessage("");
           setShowCreateEvent(true);
         }}
         onOpenProfile={() =>

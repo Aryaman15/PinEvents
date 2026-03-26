@@ -29,7 +29,11 @@ export const createEvent: RequestHandler = async (req, res) => {
 
   const parseResult = createEventSchema.safeParse(req.body);
   if (!parseResult.success) {
-    return res.status(400).json({ error: "Invalid input" });
+    const firstIssue = parseResult.error.issues[0];
+    return res.status(400).json({
+      error: firstIssue?.message ?? "Invalid input",
+      field: firstIssue?.path?.[0] ?? null,
+    });
   }
 
   const { startTime, endTime, ...rest } = parseResult.data;
@@ -404,18 +408,25 @@ export const requestJoin: RequestHandler = async (req, res) => {
     return res.status(404).json({ error: "Event not found" });
   }
 
-  if (event.type !== "private") {
-    return res
-      .status(400)
-      .json({ error: "Join requests are only needed for private events" });
-  }
-
   const existingMembership = await EventMember.findOne({
     eventId: event._id,
     userId,
     status: "accepted",
   }).lean();
   if (existingMembership) {
+    return res.status(200).json({ joinRequest: { status: "approved" } });
+  }
+
+  if (event.type === "public") {
+    await Event.updateOne(
+      { _id: event._id },
+      { $addToSet: { acceptedMembers: userId } },
+    );
+    await EventMember.updateOne(
+      { eventId: event._id, userId },
+      { $set: { role: "member", status: "accepted" } },
+      { upsert: true },
+    );
     return res.status(200).json({ joinRequest: { status: "approved" } });
   }
 
@@ -464,15 +475,28 @@ export const listJoinRequests: RequestHandler = async (req, res) => {
     return res.status(403).json({ error: "Forbidden" });
   }
 
-  const requests = await JoinRequest.find({ eventId: event._id })
+  const requests = await JoinRequest.find({
+    eventId: event._id,
+    status: "pending",
+  })
     .sort({ createdAt: -1 })
     .lean();
+
+  const requesterIds = requests.map((request) => request.userId.toString());
+  const users = requesterIds.length
+    ? await User.find({ _id: { $in: requesterIds } }).select("displayName").lean()
+    : [];
+  const displayNameById = new Map(
+    users.map((user) => [user._id.toString(), user.displayName || "Unknown user"]),
+  );
 
   return res.status(200).json({
     requests: requests.map((request) => ({
       id: request._id.toString(),
       eventId: request.eventId.toString(),
       userId: request.userId.toString(),
+      userDisplayName:
+        displayNameById.get(request.userId.toString()) ?? "Unknown user",
       status: request.status,
       createdAt: request.createdAt,
     })),
@@ -525,6 +549,11 @@ export const handleJoinRequest: RequestHandler = async (req, res) => {
     await Event.updateOne(
       { _id: event._id },
       { $addToSet: { acceptedMembers: joinRequest.userId } },
+    );
+    await EventMember.updateOne(
+      { eventId: event._id, userId: joinRequest.userId },
+      { $set: { role: "member", status: "accepted" } },
+      { upsert: true },
     );
   }
 
