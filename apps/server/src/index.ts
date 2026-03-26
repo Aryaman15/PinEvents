@@ -3,7 +3,9 @@ import http from "http";
 import mongoose from "mongoose";
 import { createApp } from "./app";
 import { configureSockets } from "./socket";
+import dns from 'node:dns';
 
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 dotenv.config();
 
 const { app, allowedOrigins } = createApp();

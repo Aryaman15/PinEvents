@@ -26,6 +26,10 @@ export const createApp = () => {
 
   app.use(express.json());
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+  app.use((req, _res, next) => {
+    console.log("Incoming request:", req.method, req.originalUrl);
+    next();
+  });
 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
@@ -34,10 +38,6 @@ export const createApp = () => {
   app.use("/auth", authRouter);
   app.use("/events", eventsRouter);
   app.use("/me", meRouter);
-  app.use((req, res, next) => {
-    console.log("Incoming request:", req.method, req.originalUrl);
-    next();
-  });
 
   return { app, allowedOrigins };
 };
