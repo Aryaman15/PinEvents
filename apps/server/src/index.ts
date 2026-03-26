@@ -7,13 +7,11 @@ import mongoose from "mongoose";
 import { createApp } from "./app";
 import { configureSockets } from "./socket";
 import dns from 'node:dns';
+import dns from 'node:dns';
 
-<<<<<<< HEAD
-=======
 dns.setServers(['8.8.8.8', '1.1.1.1']);
 dotenv.config();
 
->>>>>>> 9027e7f (feat: frontend fixes)
 const { app, allowedOrigins } = createApp();
 const port = Number(process.env.PORT ?? 4000);
 const server = http.createServer(app);
