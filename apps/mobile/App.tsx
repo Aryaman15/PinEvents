@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   BackHandler,
-  Linking,
+  Platform,
   Share,
   View,
 } from "react-native";
@@ -29,14 +29,26 @@ import {
   ViewerInfo,
 } from "./src/types/app";
 
-const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+const rawApiUrl = process.env.EXPO_PUBLIC_API_URL;
 const mapStyleUrl = process.env.EXPO_PUBLIC_MAP_STYLE_URL_2;
 const initialCenter: [number, number] = [-122.4194, 37.7749];
 const tokenKey = "authToken";
 
-if (!apiUrl) throw new Error("Missing EXPO_PUBLIC_API_URL in .env");
+if (!rawApiUrl) throw new Error("Missing EXPO_PUBLIC_API_URL in .env");
 if (!mapStyleUrl)
   throw new Error("Missing EXPO_PUBLIC_MAP_STYLE_URL_2 in .env");
+
+const normalizedApiUrl = /^https?:\/\//i.test(rawApiUrl)
+  ? rawApiUrl
+  : `http://${rawApiUrl}`;
+
+const apiUrl =
+  Platform.OS === "android"
+    ? normalizedApiUrl.replace("://localhost", "://10.0.2.2").replace(
+        "://127.0.0.1",
+        "://10.0.2.2",
+      )
+    : normalizedApiUrl;
 
 const emptyProfile: Profile = {
   id: "",
@@ -325,7 +337,12 @@ export default function App() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-    if (!response.ok) return setErrorMessage("Authentication failed.");
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      return setErrorMessage(data.error ?? "Authentication failed.");
+    }
     const data = (await response.json()) as { token?: string };
     if (!data.token) return setErrorMessage("Missing token in response.");
     await SecureStore.setItemAsync(tokenKey, data.token);
