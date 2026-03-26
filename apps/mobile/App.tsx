@@ -17,7 +17,7 @@ import { AuthScreen } from "./src/components/AuthScreen";
 import { CreateEventScreen } from "./src/components/CreateEventScreen";
 import { MapHomeScreen } from "./src/components/MapHomeScreen";
 import { ProfileEditorScreen } from "./src/components/ProfileEditorScreen";
-//import { ProfileScreen } from "./src/components/ProfileScreen";
+import { ProfileScreen } from "./src/components/ProfileScreen";
 import {
   AuthMode,
   EventDetail,
