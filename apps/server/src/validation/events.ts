@@ -18,9 +18,9 @@ const locationSchema = z.object({
 //   location: locationSchema,
 // });
 export const createEventSchema = z.object({
-  title: z.string().min(1),
-  description: z.string().min(1),
-  category: z.string().min(1),
+  title: z.string().trim().min(1, "Title is mandatory"),
+  description: z.string().trim().min(1, "Description is mandatory"),
+  category: z.string().trim().min(1, "Category is mandatory"),
   type: z.enum(["public", "private"]),
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),

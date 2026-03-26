@@ -5,6 +5,7 @@ import path from "path";
 import { authRouter } from "./routes/auth.routes";
 import { eventsRouter } from "./routes/events.routes";
 import { meRouter } from "./routes/me.routes";
+import { usersRouter } from "./routes/users.routes";
 import { getAllowedOrigins } from "./config/cors";
 
 export const createApp = () => {
@@ -38,6 +39,7 @@ export const createApp = () => {
   app.use("/auth", authRouter);
   app.use("/events", eventsRouter);
   app.use("/me", meRouter);
+  app.use("/users", usersRouter);
 
   return { app, allowedOrigins };
 };

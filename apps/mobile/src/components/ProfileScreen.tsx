@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { Profile } from '../types/app';
 
 type Props = {
@@ -11,9 +11,19 @@ type Props = {
 export function ProfileScreen({ profile, onEdit, onLogout, onBack }: Props) {
   return (
     <ScrollView className="flex-1 bg-slate-50" contentContainerStyle={{ padding: 24, rowGap: 12 }}>
-      <Text className="text-2xl font-bold">Your profile</Text>
-      <Text className="text-lg">{profile.displayName || 'No display name set'}</Text>
-      {!!profile.bio && <Text className="text-slate-600">{profile.bio}</Text>}
+      <View className="rounded-2xl bg-white p-4 items-center gap-3 border border-slate-200">
+        {profile.avatarUrl ? (
+          <Image source={{ uri: profile.avatarUrl }} className="h-24 w-24 rounded-full bg-slate-200" />
+        ) : (
+          <View className="h-24 w-24 rounded-full bg-blue-100 items-center justify-center">
+            <Text className="text-3xl text-blue-700 font-bold">
+              {(profile.displayName || "U").slice(0, 1).toUpperCase()}
+            </Text>
+          </View>
+        )}
+        <Text className="text-2xl font-bold text-slate-900">{profile.displayName || 'No display name set'}</Text>
+        {!!profile.bio && <Text className="text-slate-600 text-center">{profile.bio}</Text>}
+      </View>
       <Text className="font-semibold mt-2">Interests</Text>
       <View className="flex-row flex-wrap gap-2">
         {profile.interests.length ? profile.interests.map((interest) => (

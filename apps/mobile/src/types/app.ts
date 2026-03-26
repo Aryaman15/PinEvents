@@ -14,6 +14,14 @@ export type Profile = {
   avatarUrl: string;
 };
 
+export type PublicProfile = {
+  id: string;
+  displayName: string;
+  bio: string;
+  interests: string[];
+  avatarUrl: string;
+};
+
 export type EventPin = {
   id: string;
   title: string;
@@ -44,6 +52,7 @@ export type JoinRequest = {
   id: string;
   eventId: string;
   userId: string;
+  userDisplayName?: string;
   status: "pending" | "approved" | "rejected";
   createdAt: string;
   createdBy: string;

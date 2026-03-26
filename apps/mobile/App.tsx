@@ -25,6 +25,7 @@ import {
   EventMessage,
   EventPin,
   JoinRequest,
+  PublicProfile,
   Profile,
   ViewerInfo,
 } from "./src/types/app";
@@ -58,6 +59,9 @@ const emptyProfile: Profile = {
   avatarUrl: "",
 };
 
+const isEventStillActive = (event: Pick<EventPin, "endTime">) =>
+  new Date(event.endTime).getTime() > Date.now();
+
 export default function App() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -66,6 +70,7 @@ export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [signupAvatarUrl, setSignupAvatarUrl] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [interestInput, setInterestInput] = useState("");
 
@@ -96,6 +101,11 @@ export default function App() {
   const [showChatScreen, setShowChatScreen] = useState(false);
   const [chatMessages, setChatMessages] = useState<EventMessage[]>([]);
   const [chatDraft, setChatDraft] = useState("");
+  const [creatorProfile, setCreatorProfile] = useState<PublicProfile | null>(
+    null,
+  );
+  const [showCreatorProfile, setShowCreatorProfile] = useState(false);
+  const [isLoadingCreatorProfile, setIsLoadingCreatorProfile] = useState(false);
 
   const [newCategoryInput, setNewCategoryInput] = useState("");
   const [createCoordinate, setCreateCoordinate] =
@@ -180,6 +190,34 @@ export default function App() {
   }, [authToken, centerCoordinate, searchQuery, searchCategory]);
 
   useEffect(() => {
+    const intervalId = setInterval(() => {
+      setEvents((prev) => prev.filter(isEventStillActive));
+    }, 30_000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    if (selectedEventDetail && !isEventStillActive(selectedEventDetail)) {
+      setSelectedEventDetail(null);
+      setSelectedEventId(null);
+      setShowEventDetails(false);
+      setShowChatScreen(false);
+    }
+  }, [selectedEventDetail]);
+
+  useEffect(() => {
+    if (!selectedEventId) return;
+    const selectedEvent = events.find((event) => event.id === selectedEventId);
+    if (selectedEvent && !isEventStillActive(selectedEvent)) {
+      setSelectedEventId(null);
+      setSelectedEventDetail(null);
+      setShowEventDetails(false);
+      setShowChatScreen(false);
+    }
+  }, [events, selectedEventId]);
+
+  useEffect(() => {
     if (!authToken || !selectedEventId) return;
     fetch(`${apiUrl}/events/${selectedEventId}`, {
       headers: { Authorization: `Bearer ${authToken}` },
@@ -196,6 +234,16 @@ export default function App() {
       })
       .catch(() => setErrorMessage("Unable to load event details."));
   }, [authToken, selectedEventId]);
+
+  useEffect(() => {
+    setCreatorProfile(null);
+    setShowCreatorProfile(false);
+  }, [selectedEventDetail?.id]);
+
+  useEffect(() => {
+    if (!selectedEventDetail?.createdBy || !authToken) return;
+    loadPublicProfile(selectedEventDetail.createdBy).catch(() => undefined);
+  }, [selectedEventDetail?.createdBy, authToken]);
 
   useEffect(() => {
     if (!showChatScreen || !authToken || !chatEventId) return;
@@ -335,7 +383,13 @@ export default function App() {
     const response = await fetch(`${apiUrl}/auth/${authMode}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({
+        email,
+        password,
+        ...(authMode === "signup" && signupAvatarUrl.trim()
+          ? { avatarUrl: signupAvatarUrl.trim() }
+          : {}),
+      }),
     });
     if (!response.ok) {
       const data = (await response.json().catch(() => ({}))) as {
@@ -347,7 +401,26 @@ export default function App() {
     if (!data.token) return setErrorMessage("Missing token in response.");
     await SecureStore.setItemAsync(tokenKey, data.token);
     setAuthToken(data.token);
+    setSignupAvatarUrl("");
     await loadProfile(data.token);
+  };
+
+  const loadPublicProfile = async (userId: string) => {
+    if (!authToken) return;
+    setIsLoadingCreatorProfile(true);
+    try {
+      const response = await fetch(`${apiUrl}/users/${userId}/public`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!response.ok) {
+        setCreatorProfile(null);
+        return;
+      }
+      const data = (await response.json()) as { user?: PublicProfile };
+      setCreatorProfile(data.user ?? null);
+    } finally {
+      setIsLoadingCreatorProfile(false);
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -401,7 +474,8 @@ export default function App() {
       return setErrorMessage("Unable to load nearby events.");
     }
     const data = (await response.json()) as { events?: EventPin[] };
-    setEvents(data.events ?? []);
+    const liveEvents = (data.events ?? []).filter(isEventStillActive);
+    setEvents(liveEvents);
     setIsLoadingEvents(false);
   };
 
@@ -592,6 +666,9 @@ export default function App() {
   };
   const handleCreateEvent = async () => {
     if (!authToken) return;
+    if (!eventDraft.description.trim()) {
+      return setErrorMessage("Description is mandatory");
+    }
     const finalCategory = newCategoryInput.trim() || eventDraft.category.trim();
     if (!finalCategory) return setErrorMessage("Please choose a category.");
 
@@ -620,7 +697,13 @@ export default function App() {
       await handleLogout();
       return;
     }
-    if (!response.ok) return setErrorMessage("Unable to create event.");
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      return setErrorMessage(data.error ?? "Unable to create event.");
+    }
+    setErrorMessage("");
     setShowCreateEvent(false);
     setNewCategoryInput("");
     setEventDraft({
@@ -681,26 +764,39 @@ export default function App() {
     }
     if (!response.ok) {
       setIsSubmittingJoinRequest(false);
-      return setErrorMessage("Unable to request access.");
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      return setErrorMessage(data.error ?? "Unable to request access.");
     }
     const data = (await response.json()) as {
       joinRequest?: { status?: string };
     };
+    const nextStatus = data.joinRequest?.status as
+      | ViewerInfo["joinRequestStatus"]
+      | "approved"
+      | undefined;
     setSelectedEventDetail((prev) =>
       prev
         ? {
             ...prev,
             viewer: {
-              isMember: prev.viewer?.isMember ?? false,
+              isMember:
+                nextStatus === "approved" ? true : (prev.viewer?.isMember ?? false),
               role: prev.viewer?.role ?? null,
-              status: prev.viewer?.status ?? null,
+              status:
+                nextStatus === "approved"
+                  ? "accepted"
+                  : (prev.viewer?.status ?? null),
               joinRequestStatus:
-                (data.joinRequest?.status as ViewerInfo["joinRequestStatus"]) ??
-                "pending",
+                nextStatus === "approved" ? null : (nextStatus ?? "pending"),
             },
           }
         : prev,
     );
+    if (nextStatus === "approved") {
+      await loadEvents(authToken, centerCoordinate, searchQuery, searchCategory);
+    }
     setIsSubmittingJoinRequest(false);
   };
 
@@ -756,9 +852,7 @@ export default function App() {
     }
     if (!response.ok) return setErrorMessage("Unable to update request.");
     setSelectedEventRequests((prev) =>
-      prev.map((request) =>
-        request.id === requestId ? { ...request, status: action } : request,
-      ),
+      prev.filter((request) => request.id !== requestId),
     );
   };
 
@@ -799,6 +893,9 @@ export default function App() {
     setChatEventId(null);
     setChatMessages([]);
     setChatDraft("");
+    setCreatorProfile(null);
+    setShowCreatorProfile(false);
+    setIsLoadingCreatorProfile(false);
   };
 
   const handleAddInterest = () => {
@@ -853,9 +950,11 @@ export default function App() {
           authMode={authMode}
           email={email}
           password={password}
+          signupAvatarUrl={signupAvatarUrl}
           errorMessage={errorMessage}
           onChangeEmail={setEmail}
           onChangePassword={setPassword}
+          onChangeSignupAvatarUrl={setSignupAvatarUrl}
           onSubmit={() =>
             handleAuth().catch(() =>
               setErrorMessage("Unable to reach the server."),
@@ -937,7 +1036,10 @@ export default function App() {
               setErrorMessage("Unable to reach the server."),
             )
           }
-          onBack={() => setShowCreateEvent(false)}
+          onBack={() => {
+            setErrorMessage("");
+            setShowCreateEvent(false);
+          }}
         />
         <StatusBar style="dark" />
       </>
@@ -957,6 +1059,9 @@ export default function App() {
         errorMessage={errorMessage}
         selectedEventDetail={selectedEventDetail}
         selectedEventRequests={selectedEventRequests}
+        creatorProfile={creatorProfile}
+        showCreatorProfile={showCreatorProfile}
+        isLoadingCreatorProfile={isLoadingCreatorProfile}
         showChatScreen={showChatScreen}
         showEventDetails={showEventDetails}
         chatMessages={chatMessages}
@@ -971,6 +1076,7 @@ export default function App() {
         }}
         onOpenCreate={() => {
           setCreateCoordinate(centerCoordinate);
+          setErrorMessage("");
           setShowCreateEvent(true);
         }}
         onOpenProfile={() =>
@@ -998,6 +1104,12 @@ export default function App() {
           );
         }}
         onOpenEventDetails={() => setShowEventDetails(true)}
+        onOpenCreatorProfile={() => {
+          if (!selectedEventDetail) return;
+          loadPublicProfile(selectedEventDetail.createdBy).catch(() => undefined);
+          setShowCreatorProfile(true);
+        }}
+        onCloseCreatorProfile={() => setShowCreatorProfile(false)}
         onCloseEventDetails={() => setShowEventDetails(false)}
         onDeleteEvent={() =>
           handleDeleteEvent().catch(() =>

@@ -1,5 +1,5 @@
 import MapLibreGL from "@maplibre/maplibre-react-native";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -12,7 +12,13 @@ import {
   Platform,
 } from "react-native";
 import type { FeatureCollection, Point } from "geojson";
-import { EventDetail, EventMessage, EventPin, JoinRequest } from "../types/app";
+import {
+  EventDetail,
+  EventMessage,
+  EventPin,
+  JoinRequest,
+  PublicProfile,
+} from "../types/app";
 import { formatDateTime } from "../utils/date";
 
 type Props = {
@@ -26,6 +32,9 @@ type Props = {
   errorMessage: string;
   selectedEventDetail: EventDetail | null;
   selectedEventRequests: JoinRequest[];
+  creatorProfile: PublicProfile | null;
+  showCreatorProfile: boolean;
+  isLoadingCreatorProfile: boolean;
   showChatScreen: boolean;
   showEventDetails: boolean;
   chatMessages: EventMessage[];
@@ -45,6 +54,8 @@ type Props = {
   ) => void;
   onOpenChat: () => void;
   onOpenEventDetails: () => void;
+  onOpenCreatorProfile: () => void;
+  onCloseCreatorProfile: () => void;
   onCloseEventDetails: () => void;
   onDeleteEvent: () => void;
   onCloseDetail: () => void;
@@ -66,6 +77,9 @@ export function MapHomeScreen(props: Props) {
     errorMessage,
     selectedEventDetail,
     selectedEventRequests,
+    creatorProfile,
+    showCreatorProfile,
+    isLoadingCreatorProfile,
     showChatScreen,
     showEventDetails,
     chatMessages,
@@ -82,6 +96,8 @@ export function MapHomeScreen(props: Props) {
     onRequestDecision,
     onOpenChat,
     onOpenEventDetails,
+    onOpenCreatorProfile,
+    onCloseCreatorProfile,
     onCloseEventDetails,
     onDeleteEvent,
     onCloseDetail,
@@ -92,10 +108,14 @@ export function MapHomeScreen(props: Props) {
   } = props;
 
   const chatScrollRef = useRef<ScrollView | null>(null);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
   const joinRequestStatus = selectedEventDetail?.viewer?.joinRequestStatus;
   const showRequestJoin =
     selectedEventDetail?.type === "private" &&
+    !selectedEventDetail.viewer?.isMember;
+  const showPublicJoin =
+    selectedEventDetail?.type === "public" &&
     !selectedEventDetail.viewer?.isMember;
   const requestButtonLabel =
     joinRequestStatus === "pending"
@@ -103,6 +123,13 @@ export function MapHomeScreen(props: Props) {
       : joinRequestStatus === "rejected"
         ? "Request again"
         : "Request Join";
+  const categorySuggestions = useMemo(() => {
+    const query = searchCategory.trim().toLowerCase();
+    if (!query) return categories;
+    return categories.filter((category) =>
+      category.toLowerCase().includes(query),
+    );
+  }, [categories, searchCategory]);
 
   useEffect(() => {
     if (!showChatScreen) return;
@@ -142,17 +169,49 @@ export function MapHomeScreen(props: Props) {
           />
           <Pressable
             className="bg-slate-800 rounded-lg px-3 justify-center"
-            onPress={onClearSearch}
+            onPress={() => {
+              onClearSearch();
+              setShowCategoryDropdown(false);
+            }}
           >
             <Text className="text-white">Clear</Text>
           </Pressable>
         </View>
-        <TextInput
-          className="rounded-lg border border-slate-300 px-3 py-2"
-          placeholder="Category"
-          value={searchCategory}
-          onChangeText={onSearchCategory}
-        />
+        <View>
+          <TextInput
+            className="rounded-lg border border-slate-300 px-3 py-2"
+            placeholder="Category"
+            value={searchCategory}
+            onFocus={() => setShowCategoryDropdown(true)}
+            onChangeText={(value) => {
+              onSearchCategory(value);
+              setShowCategoryDropdown(true);
+            }}
+          />
+          {showCategoryDropdown && (
+            <View className="mt-1 max-h-36 rounded-lg border border-slate-200 bg-white">
+              <ScrollView keyboardShouldPersistTaps="handled">
+                {categorySuggestions.map((category) => (
+                  <Pressable
+                    key={category}
+                    className="px-3 py-2"
+                    onPress={() => {
+                      onSearchCategory(category);
+                      setShowCategoryDropdown(false);
+                    }}
+                  >
+                    <Text className="text-slate-700">{category}</Text>
+                  </Pressable>
+                ))}
+                {!categorySuggestions.length && (
+                  <Text className="px-3 py-2 text-slate-500">
+                    No categories found
+                  </Text>
+                )}
+              </ScrollView>
+            </View>
+          )}
+        </View>
         {!!categories.length && (
           <Text className="text-xs text-slate-500">
             Categories: {categories.join(", ")}
@@ -191,6 +250,11 @@ export function MapHomeScreen(props: Props) {
           <Text className="text-slate-500">
             {selectedEventDetail.category} • {selectedEventDetail.type}
           </Text>
+          <Pressable onPress={onOpenCreatorProfile}>
+            <Text className="text-blue-700 text-xs">
+              Created by: {creatorProfile?.displayName || "View creator profile"}
+            </Text>
+          </Pressable>
           <Text className="text-slate-500">
             {formatDateTime(selectedEventDetail.startTime)} -{" "}
             {formatDateTime(selectedEventDetail.endTime)}
@@ -229,6 +293,17 @@ export function MapHomeScreen(props: Props) {
                 </Text>
               </Pressable>
             )}
+            {showPublicJoin && (
+              <Pressable
+                className="rounded-lg bg-blue-600 px-3 py-2"
+                onPress={onRequestJoin}
+                disabled={isSubmittingJoinRequest}
+              >
+                <Text className="text-white">
+                  {isSubmittingJoinRequest ? "Joining..." : "Join event"}
+                </Text>
+              </Pressable>
+            )}
             <Pressable
               className="bg-slate-200 rounded-lg px-3 py-2"
               onPress={onCloseDetail}
@@ -249,6 +324,11 @@ export function MapHomeScreen(props: Props) {
               <Text className="text-slate-600">
                 {selectedEventDetail.category} • {selectedEventDetail.type}
               </Text>
+              <Pressable onPress={onOpenCreatorProfile}>
+                <Text className="text-blue-700 text-sm">
+                  Created by: {creatorProfile?.displayName || "View creator profile"}
+                </Text>
+              </Pressable>
               <Text className="text-slate-700">
                 {selectedEventDetail.description}
               </Text>
@@ -288,7 +368,8 @@ export function MapHomeScreen(props: Props) {
                       className="flex-row items-center justify-between rounded-lg border border-slate-200 px-2 py-2"
                     >
                       <Text className="text-xs">
-                        {request.userId} ({request.status})
+                        {request.userDisplayName ?? request.userId} (
+                        {request.status})
                       </Text>
                       <View className="flex-row gap-2">
                         <Pressable
@@ -333,6 +414,52 @@ export function MapHomeScreen(props: Props) {
                 </Pressable>
               )}
             </View>
+          </View>
+        </View>
+      )}
+
+      {showCreatorProfile && (
+        <View className="absolute inset-0 bg-black/45 items-center justify-center p-6">
+          <View className="w-full rounded-2xl bg-white p-4">
+            {isLoadingCreatorProfile ? (
+              <ActivityIndicator size="small" />
+            ) : (
+              <>
+                {!!creatorProfile?.avatarUrl && (
+                  <Image
+                    source={{ uri: creatorProfile.avatarUrl }}
+                    style={{ width: 72, height: 72, borderRadius: 36 }}
+                  />
+                )}
+                <Text className="text-lg font-bold text-slate-900">
+                  {creatorProfile?.displayName || "Event creator"}
+                </Text>
+                {!!creatorProfile?.bio && (
+                  <Text className="text-slate-600 mt-2">{creatorProfile.bio}</Text>
+                )}
+                <Text className="font-semibold mt-3">Interests</Text>
+                <View className="flex-row flex-wrap gap-2 mt-1">
+                  {creatorProfile?.interests?.length ? (
+                    creatorProfile.interests.map((interest) => (
+                      <View
+                        key={interest}
+                        className="rounded-full bg-slate-200 px-3 py-1"
+                      >
+                        <Text>{interest}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text className="text-slate-500">No public interests shared.</Text>
+                  )}
+                </View>
+              </>
+            )}
+            <Pressable
+              className="mt-4 rounded-lg bg-slate-900 px-3 py-3"
+              onPress={onCloseCreatorProfile}
+            >
+              <Text className="text-center text-white">Close</Text>
+            </Pressable>
           </View>
         </View>
       )}

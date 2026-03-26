@@ -10,7 +10,7 @@ export const signup: RequestHandler = async (req, res) => {
     return res.status(400).json({ error: "Invalid input" });
   }
 
-  const { email, password } = parseResult.data;
+  const { email, password, avatarUrl } = parseResult.data;
   const existingUser = await User.findOne({ email }).lean();
 
   if (existingUser) {
@@ -18,7 +18,11 @@ export const signup: RequestHandler = async (req, res) => {
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
-  const user = await User.create({ email, passwordHash });
+  const user = await User.create({
+    email,
+    passwordHash,
+    ...(avatarUrl ? { avatarUrl } : {}),
+  });
   try {
     const token = signToken(user._id.toString());
     return res.status(201).json({
