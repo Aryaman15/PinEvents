@@ -12,7 +12,13 @@ import {
   Platform,
 } from "react-native";
 import type { FeatureCollection, Point } from "geojson";
-import { EventDetail, EventMessage, EventPin, JoinRequest } from "../types/app";
+import {
+  EventDetail,
+  EventMessage,
+  EventPin,
+  JoinRequest,
+  PublicProfile,
+} from "../types/app";
 import { formatDateTime } from "../utils/date";
 
 type Props = {
@@ -26,6 +32,9 @@ type Props = {
   errorMessage: string;
   selectedEventDetail: EventDetail | null;
   selectedEventRequests: JoinRequest[];
+  creatorProfile: PublicProfile | null;
+  showCreatorProfile: boolean;
+  isLoadingCreatorProfile: boolean;
   showChatScreen: boolean;
   showEventDetails: boolean;
   chatMessages: EventMessage[];
@@ -45,6 +54,8 @@ type Props = {
   ) => void;
   onOpenChat: () => void;
   onOpenEventDetails: () => void;
+  onOpenCreatorProfile: () => void;
+  onCloseCreatorProfile: () => void;
   onCloseEventDetails: () => void;
   onDeleteEvent: () => void;
   onCloseDetail: () => void;
@@ -66,6 +77,9 @@ export function MapHomeScreen(props: Props) {
     errorMessage,
     selectedEventDetail,
     selectedEventRequests,
+    creatorProfile,
+    showCreatorProfile,
+    isLoadingCreatorProfile,
     showChatScreen,
     showEventDetails,
     chatMessages,
@@ -82,6 +96,8 @@ export function MapHomeScreen(props: Props) {
     onRequestDecision,
     onOpenChat,
     onOpenEventDetails,
+    onOpenCreatorProfile,
+    onCloseCreatorProfile,
     onCloseEventDetails,
     onDeleteEvent,
     onCloseDetail,
@@ -234,6 +250,11 @@ export function MapHomeScreen(props: Props) {
           <Text className="text-slate-500">
             {selectedEventDetail.category} • {selectedEventDetail.type}
           </Text>
+          <Pressable onPress={onOpenCreatorProfile}>
+            <Text className="text-blue-700 text-xs">
+              Created by: {creatorProfile?.displayName || "View creator profile"}
+            </Text>
+          </Pressable>
           <Text className="text-slate-500">
             {formatDateTime(selectedEventDetail.startTime)} -{" "}
             {formatDateTime(selectedEventDetail.endTime)}
@@ -303,6 +324,11 @@ export function MapHomeScreen(props: Props) {
               <Text className="text-slate-600">
                 {selectedEventDetail.category} • {selectedEventDetail.type}
               </Text>
+              <Pressable onPress={onOpenCreatorProfile}>
+                <Text className="text-blue-700 text-sm">
+                  Created by: {creatorProfile?.displayName || "View creator profile"}
+                </Text>
+              </Pressable>
               <Text className="text-slate-700">
                 {selectedEventDetail.description}
               </Text>
@@ -388,6 +414,52 @@ export function MapHomeScreen(props: Props) {
                 </Pressable>
               )}
             </View>
+          </View>
+        </View>
+      )}
+
+      {showCreatorProfile && (
+        <View className="absolute inset-0 bg-black/45 items-center justify-center p-6">
+          <View className="w-full rounded-2xl bg-white p-4">
+            {isLoadingCreatorProfile ? (
+              <ActivityIndicator size="small" />
+            ) : (
+              <>
+                {!!creatorProfile?.avatarUrl && (
+                  <Image
+                    source={{ uri: creatorProfile.avatarUrl }}
+                    style={{ width: 72, height: 72, borderRadius: 36 }}
+                  />
+                )}
+                <Text className="text-lg font-bold text-slate-900">
+                  {creatorProfile?.displayName || "Event creator"}
+                </Text>
+                {!!creatorProfile?.bio && (
+                  <Text className="text-slate-600 mt-2">{creatorProfile.bio}</Text>
+                )}
+                <Text className="font-semibold mt-3">Interests</Text>
+                <View className="flex-row flex-wrap gap-2 mt-1">
+                  {creatorProfile?.interests?.length ? (
+                    creatorProfile.interests.map((interest) => (
+                      <View
+                        key={interest}
+                        className="rounded-full bg-slate-200 px-3 py-1"
+                      >
+                        <Text>{interest}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text className="text-slate-500">No public interests shared.</Text>
+                  )}
+                </View>
+              </>
+            )}
+            <Pressable
+              className="mt-4 rounded-lg bg-slate-900 px-3 py-3"
+              onPress={onCloseCreatorProfile}
+            >
+              <Text className="text-center text-white">Close</Text>
+            </Pressable>
           </View>
         </View>
       )}

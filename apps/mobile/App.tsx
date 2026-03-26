@@ -25,6 +25,7 @@ import {
   EventMessage,
   EventPin,
   JoinRequest,
+  PublicProfile,
   Profile,
   ViewerInfo,
 } from "./src/types/app";
@@ -69,6 +70,7 @@ export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [signupAvatarUrl, setSignupAvatarUrl] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [interestInput, setInterestInput] = useState("");
 
@@ -99,6 +101,11 @@ export default function App() {
   const [showChatScreen, setShowChatScreen] = useState(false);
   const [chatMessages, setChatMessages] = useState<EventMessage[]>([]);
   const [chatDraft, setChatDraft] = useState("");
+  const [creatorProfile, setCreatorProfile] = useState<PublicProfile | null>(
+    null,
+  );
+  const [showCreatorProfile, setShowCreatorProfile] = useState(false);
+  const [isLoadingCreatorProfile, setIsLoadingCreatorProfile] = useState(false);
 
   const [newCategoryInput, setNewCategoryInput] = useState("");
   const [createCoordinate, setCreateCoordinate] =
@@ -227,6 +234,16 @@ export default function App() {
       })
       .catch(() => setErrorMessage("Unable to load event details."));
   }, [authToken, selectedEventId]);
+
+  useEffect(() => {
+    setCreatorProfile(null);
+    setShowCreatorProfile(false);
+  }, [selectedEventDetail?.id]);
+
+  useEffect(() => {
+    if (!selectedEventDetail?.createdBy || !authToken) return;
+    loadPublicProfile(selectedEventDetail.createdBy).catch(() => undefined);
+  }, [selectedEventDetail?.createdBy, authToken]);
 
   useEffect(() => {
     if (!showChatScreen || !authToken || !chatEventId) return;
@@ -366,7 +383,13 @@ export default function App() {
     const response = await fetch(`${apiUrl}/auth/${authMode}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({
+        email,
+        password,
+        ...(authMode === "signup" && signupAvatarUrl.trim()
+          ? { avatarUrl: signupAvatarUrl.trim() }
+          : {}),
+      }),
     });
     if (!response.ok) {
       const data = (await response.json().catch(() => ({}))) as {
@@ -378,7 +401,26 @@ export default function App() {
     if (!data.token) return setErrorMessage("Missing token in response.");
     await SecureStore.setItemAsync(tokenKey, data.token);
     setAuthToken(data.token);
+    setSignupAvatarUrl("");
     await loadProfile(data.token);
+  };
+
+  const loadPublicProfile = async (userId: string) => {
+    if (!authToken) return;
+    setIsLoadingCreatorProfile(true);
+    try {
+      const response = await fetch(`${apiUrl}/users/${userId}/public`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!response.ok) {
+        setCreatorProfile(null);
+        return;
+      }
+      const data = (await response.json()) as { user?: PublicProfile };
+      setCreatorProfile(data.user ?? null);
+    } finally {
+      setIsLoadingCreatorProfile(false);
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -851,6 +893,9 @@ export default function App() {
     setChatEventId(null);
     setChatMessages([]);
     setChatDraft("");
+    setCreatorProfile(null);
+    setShowCreatorProfile(false);
+    setIsLoadingCreatorProfile(false);
   };
 
   const handleAddInterest = () => {
@@ -905,9 +950,11 @@ export default function App() {
           authMode={authMode}
           email={email}
           password={password}
+          signupAvatarUrl={signupAvatarUrl}
           errorMessage={errorMessage}
           onChangeEmail={setEmail}
           onChangePassword={setPassword}
+          onChangeSignupAvatarUrl={setSignupAvatarUrl}
           onSubmit={() =>
             handleAuth().catch(() =>
               setErrorMessage("Unable to reach the server."),
@@ -1012,6 +1059,9 @@ export default function App() {
         errorMessage={errorMessage}
         selectedEventDetail={selectedEventDetail}
         selectedEventRequests={selectedEventRequests}
+        creatorProfile={creatorProfile}
+        showCreatorProfile={showCreatorProfile}
+        isLoadingCreatorProfile={isLoadingCreatorProfile}
         showChatScreen={showChatScreen}
         showEventDetails={showEventDetails}
         chatMessages={chatMessages}
@@ -1054,6 +1104,12 @@ export default function App() {
           );
         }}
         onOpenEventDetails={() => setShowEventDetails(true)}
+        onOpenCreatorProfile={() => {
+          if (!selectedEventDetail) return;
+          loadPublicProfile(selectedEventDetail.createdBy).catch(() => undefined);
+          setShowCreatorProfile(true);
+        }}
+        onCloseCreatorProfile={() => setShowCreatorProfile(false)}
         onCloseEventDetails={() => setShowEventDetails(false)}
         onDeleteEvent={() =>
           handleDeleteEvent().catch(() =>

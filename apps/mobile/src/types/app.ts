@@ -14,6 +14,14 @@ export type Profile = {
   avatarUrl: string;
 };
 
+export type PublicProfile = {
+  id: string;
+  displayName: string;
+  bio: string;
+  interests: string[];
+  avatarUrl: string;
+};
+
 export type EventPin = {
   id: string;
   title: string;

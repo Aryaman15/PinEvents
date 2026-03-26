@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Profile } from '../types/app';
 
 type Props = {
@@ -19,6 +19,11 @@ export function ProfileEditorScreen({ draft, interestInput, needsSetup, onUpdate
       <TextInput className="rounded-xl border border-slate-200 bg-white px-4 py-3" placeholder="Display name" value={draft.displayName} onChangeText={(v) => onUpdateDraft({ ...draft, displayName: v })} />
       <TextInput className="rounded-xl border border-slate-200 bg-white px-4 py-3" placeholder="Bio" multiline value={draft.bio} onChangeText={(v) => onUpdateDraft({ ...draft, bio: v })} />
       <TextInput className="rounded-xl border border-slate-200 bg-white px-4 py-3" placeholder="Avatar URL" value={draft.avatarUrl} onChangeText={(v) => onUpdateDraft({ ...draft, avatarUrl: v })} />
+      {!!draft.avatarUrl && (
+        <View className="items-center">
+          <Image source={{ uri: draft.avatarUrl }} className="h-24 w-24 rounded-full bg-slate-200" />
+        </View>
+      )}
       <View className="flex-row gap-2">
         <TextInput className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3" placeholder="Add interest" value={interestInput} onChangeText={onInterestInput} />
         <Pressable className="bg-slate-800 rounded-xl px-4 justify-center" onPress={onAddInterest}><Text className="text-white">Add</Text></Pressable>
