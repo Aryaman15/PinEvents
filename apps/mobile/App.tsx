@@ -17,7 +17,7 @@ import { AuthScreen } from "./src/components/AuthScreen";
 import { CreateEventScreen } from "./src/components/CreateEventScreen";
 import { MapHomeScreen } from "./src/components/MapHomeScreen";
 import { ProfileEditorScreen } from "./src/components/ProfileEditorScreen";
-//import { ProfileScreen } from "./src/components/ProfileScreen";
+import { ProfileScreen } from "./src/components/ProfileScreen";
 import {
   AuthMode,
   EventDetail,
@@ -57,6 +57,9 @@ const emptyProfile: Profile = {
   interests: [],
   avatarUrl: "",
 };
+
+const isEventStillActive = (event: Pick<EventPin, "endTime">) =>
+  new Date(event.endTime).getTime() > Date.now();
 
 export default function App() {
   const [authToken, setAuthToken] = useState<string | null>(null);
@@ -178,6 +181,34 @@ export default function App() {
       () => undefined,
     );
   }, [authToken, centerCoordinate, searchQuery, searchCategory]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setEvents((prev) => prev.filter(isEventStillActive));
+    }, 30_000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    if (selectedEventDetail && !isEventStillActive(selectedEventDetail)) {
+      setSelectedEventDetail(null);
+      setSelectedEventId(null);
+      setShowEventDetails(false);
+      setShowChatScreen(false);
+    }
+  }, [selectedEventDetail]);
+
+  useEffect(() => {
+    if (!selectedEventId) return;
+    const selectedEvent = events.find((event) => event.id === selectedEventId);
+    if (selectedEvent && !isEventStillActive(selectedEvent)) {
+      setSelectedEventId(null);
+      setSelectedEventDetail(null);
+      setShowEventDetails(false);
+      setShowChatScreen(false);
+    }
+  }, [events, selectedEventId]);
 
   useEffect(() => {
     if (!authToken || !selectedEventId) return;
@@ -401,7 +432,8 @@ export default function App() {
       return setErrorMessage("Unable to load nearby events.");
     }
     const data = (await response.json()) as { events?: EventPin[] };
-    setEvents(data.events ?? []);
+    const liveEvents = (data.events ?? []).filter(isEventStillActive);
+    setEvents(liveEvents);
     setIsLoadingEvents(false);
   };
 

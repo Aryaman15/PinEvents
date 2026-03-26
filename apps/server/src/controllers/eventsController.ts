@@ -97,6 +97,7 @@ export const getEventsNear: RequestHandler = async (req, res) => {
 
   const events = await Event.find({
     ...filters,
+    endTime: { $gt: new Date() },
     location: {
       $near: {
         $geometry: {
